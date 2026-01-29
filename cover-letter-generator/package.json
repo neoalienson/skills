@@ -1,0 +1,19 @@
+{
+  "name": "clawdbot-skill-cover-letter-generator",
+  "version": "1.0.0",
+  "description": "A cover letter generator skill for Clawdbot",
+  "main": "cover-letter.mjs",
+  "type": "module",
+  "scripts": {
+    "test": "node cover-letter.mjs"
+  },
+  "keywords": [
+    "clawdbot",
+    "skill",
+    "cover-letter",
+    "resume",
+    "job-application"
+  ],
+  "author": "Clawdbot",
+  "license": "MIT"
+}

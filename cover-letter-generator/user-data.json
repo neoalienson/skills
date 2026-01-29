@@ -1,0 +1,31 @@
+{
+  "name": "Neo",
+  "email": "neo@example.com",
+  "phone": "+852 1234 5678",
+  "address": "Tseung Kwan O, Hong Kong",
+  "skills": [
+    "Project Management",
+    "AWS Solutions Architecture",
+    "TOGAF",
+    "CFA",
+    "CISM"
+  ],
+  "experience": [
+    {
+      "position": "Senior Developer",
+      "company": "Example Company",
+      "duration": "2020-Present",
+      "responsibilities": [
+        "Led development teams",
+        "Implemented cloud solutions"
+      ]
+    }
+  ],
+  "education": [
+    {
+      "degree": "Bachelor of Science",
+      "institution": "University of Hong Kong",
+      "year": "2015"
+    }
+  ]
+}
