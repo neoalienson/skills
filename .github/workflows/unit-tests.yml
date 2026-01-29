@@ -26,8 +26,11 @@ jobs:
 
     - name: Install dependencies
       run: |
-        npm install -g nvm
-        source ~/.nvm/nvm.sh && nvm install ${{ matrix.node-version }} && nvm use ${{ matrix.node-version }}
+        # Node.js is already installed via setup-node, no need to install nvm separately
+        # The setup-node action already sets up the correct Node.js version
+        echo "Node.js ${{ matrix.node-version }} is already available"
+        node --version
+        npm --version
         # Install any additional dependencies if needed
 
     - name: Run unit tests for telegram-media-send
