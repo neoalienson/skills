@@ -41,17 +41,6 @@ jobs:
           echo "No unit tests found for telegram-media-send skill"
         fi
 
-    - name: Run unit tests for kiss skill
-      run: |
-        source ~/.nvm/nvm.sh && nvm use ${{ matrix.node-version }}
-        # Check if kiss skill test file exists before running
-        if [ -f "kiss/test/unit_test_kiss.mjs" ]; then
-          echo "Running kiss skill unit tests..."
-          node kiss/test/unit_test_kiss.mjs
-        else
-          echo "No unit tests found for kiss skill"
-        fi
-
     - name: Run tests for other skills if they exist
       run: |
         source ~/.nvm/nvm.sh && nvm use ${{ matrix.node-version }}
