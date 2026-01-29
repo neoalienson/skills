@@ -10,16 +10,21 @@ import { join, extname } from 'path';
 
 // Function to read bot token from Clawdbot config
 function getBotToken() {
-  // Attempt to read from the clawdbot config file
-  const configPath = process.env.HOME + '/.clawdbot/clawdbot.json';
+  // Attempt to read from the moltbot config file
+  const configPaths = [
+    process.env.HOME + '/.moltbot/moltbot.json',
+    process.env.HOME + '/.clawdbot/clawdbot.json'
+  ];
   
-  if (existsSync(configPath)) {
-    try {
-      const config = JSON.parse(readFileSync(configPath, 'utf8'));
-      return config.channels?.telegram?.botToken;
-    } catch (error) {
-      console.error('Error reading config file:', error.message);
-      return null;
+  for (const configPath of configPaths) {
+    if (existsSync(configPath)) {
+      try {
+        const config = JSON.parse(readFileSync(configPath, 'utf8'));
+        return config.channels?.telegram?.botToken || config.env?.vars?.TELEGRAM_BOT_TOKEN;
+      } catch (error) {
+        console.error('Error reading config file:', error.message);
+        continue;
+      }
     }
   }
   
@@ -96,8 +101,8 @@ function sendMedia(chatId, mediaPath, caption = '', fileName = '') {
   }
 }
 
-// Main execution
-if (process.argv[1] === new URL(import.meta.url).pathname) {
+// Handle both cases: with arguments (execution mode) and without (show usage)
+if (process.argv.length >= 4) { // node script.js arg1 arg2 arg3 (at least 4 elements)
   const [, , chatId, mediaPath, ...args] = process.argv;
   const caption = args.join(' ');
 
@@ -118,6 +123,19 @@ Examples:
 
   const success = sendMedia(chatId, mediaPath, caption);
   process.exit(success ? 0 : 1);
+} else {
+  // Show usage when called without sufficient arguments
+  console.log(`
+Telegram Media Sender
+
+Usage:
+  send_telegram_media <chat_id> <media_path> [caption]
+
+Examples:
+  send_telegram_media 123456789 /path/to/image.jpg
+  send_telegram_media 123456789 /path/to/audio.mp3 "My audio message"
+  send_telegram_media 123456789 /path/to/document.pdf "Check out this document"
+  `);
 }
 
 export { sendMedia, getBotToken, getTelegramMethod };

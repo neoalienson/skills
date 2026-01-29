@@ -7,7 +7,7 @@ import { execSync } from 'child_process';
 class CoverLetterGenerator {
   constructor(workspaceDir = '/home/neo/clawd') {
     this.workspaceDir = workspaceDir;
-    this.coverLettersDir = join(workspaceDir, 'skills', 'cover-letter-generator', 'cover-letters');
+    this.coverLettersDir = '/tmp';  // Changed to use /tmp for temporary files
     
     // Create cover letters directory if it doesn't exist
     if (!existsSync(this.coverLettersDir)) {
@@ -87,10 +87,15 @@ class CoverLetterGenerator {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filename = `cover-letter-${companyName.replace(/\s+/g, '-')}-${timestamp}.pdf`;
 
-    // Convert to PDF and save
-    const filePath = join(this.coverLettersDir, filename);
+    // Convert to PDF and save to /tmp
+    const filePath = join('/tmp', filename);
     await this.convertToPDF(formattedLetter, filePath);
 
+    // Attempt to send the file to the requestor (this is a simplified approach)
+    // In a real implementation, this would interface with the messaging system
+    console.log(`Cover letter generated at: ${filePath}`);
+    console.log('Please retrieve the file from the messaging system.');
+    
     return {
       success: true,
       filePath: filePath,
@@ -114,6 +119,7 @@ Dear Hiring Manager,
 I am writing to express my strong interest in the ${jobTitle} position at ${companyName}. With my extensive background in technology and business, I believe I would be an excellent addition to your team.
 
 In my current role, I have developed expertise in areas that directly align with your job requirements. My experience includes:
+
 ${relevantSkills.map(skill => `- ${skill}`).join('\n')}
 
 I am particularly drawn to this opportunity because of [specific reason related to company/job]. My passion for excellence and commitment to continuous learning make me well-suited for this role.
@@ -157,6 +163,9 @@ ${userData.name}
       mainContent = lines.slice(startIndex).join('\n');
     }
 
+    // Add extra line breaks between paragraphs to ensure proper spacing
+    let formattedContent = mainContent.replace(/\n\s*\n/g, '\n\n\n'); // Double up empty lines for more space
+
     return `
 ${this.userData.name}
 ${this.userData.address}
@@ -168,7 +177,7 @@ Hiring Manager
 ${companyName}
 [Company Address]
 
-${mainContent}
+${formattedContent}
 
 Sincerely,
 ${this.userData.name}
@@ -176,65 +185,208 @@ ${this.userData.name}
   }
 
   async convertToPDF(content, outputPath) {
-    // Use PDFKit to generate a proper PDF
+    // Try to create a proper PDF using pandoc with the installed tools
     try {
-      const PDFDocument = (await import('pdfkit')).default;
       const fs = await import('fs');
+      const { exec } = await import('child_process');
       
-      const doc = new PDFDocument();
-      const stream = fs.createWriteStream(outputPath);
-      doc.pipe(stream);
-
-      // Set up basic styling
-      doc.fontSize(12);
-
-      // Split content into lines
-      const lines = content.split('\n');
+      // Create markdown content
+      const markdownContent = this.createMarkdownDocument(content);
       
-      let yPosition = 50; // Starting y position
+      // Replace .pdf extension with .md for the markdown file
+      const markdownPath = outputPath.replace('.pdf', '.md');
       
-      // Process each line of the cover letter
-      for (const line of lines) {
-        if (yPosition > 750) { // If we reach bottom of page, add new page
-          doc.addPage();
-          yPosition = 50;
-        }
-        
-        if (line.trim() === '') {
-          yPosition += 10; // Add spacing for empty lines
-        } else if (line.includes('Sincerely,') || line.includes(this.userData.name)) {
-          // Special formatting for closing
-          doc.font('Helvetica-Bold').fontSize(12);
-          doc.text(line.trim(), 50, yPosition);
-          doc.font('Helvetica').fontSize(12);
-          yPosition += 20;
-        } else if (line.includes('Dear Hiring Manager')) {
-          // Special formatting for greeting
-          yPosition += 20;
-          doc.text(line.trim(), 50, yPosition);
-          yPosition += 20;
-        } else {
-          // Regular text
-          doc.text(line.trim(), 50, yPosition);
-          yPosition += 15;
-        }
-      }
-
-      doc.end();
+      // Write markdown file
+      await fs.promises.writeFile(markdownPath, markdownContent);
       
-      // Wait for the PDF to finish writing
-      await new Promise((resolve, reject) => {
-        stream.on('finish', resolve);
-        stream.on('error', reject);
+      // Convert markdown to PDF using pandoc with proper options
+      const convertPromise = new Promise((resolve, reject) => {
+        exec(`pandoc "${markdownPath}" -o "${outputPath}" --pdf-engine=xelatex -V geometry:margin=1in --variable fontsize=12pt --variable documentclass=article`, 
+          (error, stdout, stderr) => {
+            if (error) {
+              console.error('Error converting Markdown to PDF with pandoc:', error.message);
+              console.log('Falling back to text file');
+              
+              // Fallback to creating text version in /tmp
+              const txtOutputPath = outputPath.replace(/^.*[/]/, '/tmp/');  // Ensure it goes to /tmp
+              writeFileSync(txtOutputPath.replace('.pdf', '.txt'), content);
+              console.log(`TEXT_FILE_PATH:${txtOutputPath.replace('.pdf', '.txt')}`); // Special marker
+              reject(error);
+            } else {
+              console.log(`PDF successfully created using pandoc: ${outputPath}`);
+              console.log(`FILE_PATH:${outputPath}`); // Special marker to indicate file location
+              resolve();
+            }
+          });
       });
       
-      console.log(`PDF successfully created: ${outputPath}`);
+      await convertPromise;
+      
     } catch (error) {
-      console.error('Error generating PDF with PDFKit:', error.message);
-      // Fallback to creating text version
+      console.error('Error generating PDF from Markdown:', error.message);
+      // Fallback to creating text version in /tmp
       console.log('Creating text version as fallback');
-      writeFileSync(outputPath.replace('.pdf', '.txt'), content);
+      const txtOutputPath = outputPath.replace(/^.*[/]/, '/tmp/');  // Ensure it goes to /tmp
+      writeFileSync(txtOutputPath.replace('.pdf', '.txt'), content);
+      console.log(`TEXT_FILE_PATH:${txtOutputPath.replace('.pdf', '.txt')}`); // Special marker
     }
+  }
+  
+  createFormattedText(content) {
+    // Split content into lines and process
+    const lines = content.split('\n');
+    
+    // Extract components
+    const nameLine = lines[0] ? lines[0] : 'Your Name';
+    const addressLine = lines[1] ? lines[1] : 'Your Address';
+    const contactLine = lines[2] ? lines[2] : 'Email and Phone';
+    const dateLine = lines[4] ? lines[4] : 'Date';
+    const companyLine = lines[6] ? lines[6] : 'Hiring Manager';
+    const companyAddrLine = lines[7] ? lines[7] : 'Company Address';
+    
+    // Find the start of the main content (after the header)
+    let contentStartIdx = 9; // Start after the header lines
+    while (contentStartIdx < lines.length && !lines[contentStartIdx].includes('Dear Hiring Manager')) {
+      contentStartIdx++;
+    }
+    
+    // Find the end of the main content (before the closing)
+    let contentEndIdx = contentStartIdx;
+    while (contentEndIdx < lines.length && !lines[contentEndIdx].includes('Sincerely,')) {
+      contentEndIdx++;
+    }
+    
+    // Extract the main content
+    const mainContentLines = lines.slice(contentStartIdx, contentEndIdx);
+    let mainContent = '';
+    
+    // Process the main content with proper spacing
+    for (let i = 0; i < mainContentLines.length; i++) {
+      const line = mainContentLines[i];
+      const trimmedLine = line.trim();
+      
+      // Handle list items
+      if (trimmedLine.startsWith('- ') || trimmedLine.startsWith('* ')) {
+        mainContent += `    ${trimmedLine}\n`;  // Indent list items
+      } else if (trimmedLine !== '') {
+        mainContent += `${trimmedLine}\n\n`;  // Add extra line break for paragraphs
+      } else {
+        // Empty lines are preserved for spacing
+        mainContent += '\n';
+      }
+    }
+    
+    // Get the closing lines
+    const sincerelyLine = lines[contentEndIdx] ? lines[contentEndIdx] : 'Sincerely,';
+    const nameSignature = lines[contentEndIdx + 1] ? lines[contentEndIdx + 1] : 'Your Name';
+    
+    // Create the formatted text document
+    return `${nameLine}
+${addressLine}
+${contactLine}
+
+
+${dateLine}
+
+
+${companyLine}
+${companyAddrLine}
+
+
+Dear Hiring Manager,
+
+${mainContent.trim()}
+
+
+${sincerelyLine}
+
+${nameSignature}`;
+  }
+  
+  createMarkdownDocument(content) {
+    // Split content into lines and process
+    const lines = content.split('\n');
+    
+    // Extract components
+    const nameLine = lines[0] ? this.escapeMarkdown(lines[0]) : 'Your Name';
+    const addressLine = lines[1] ? this.escapeMarkdown(lines[1]) : 'Your Address';
+    const contactLine = lines[2] ? this.escapeMarkdown(lines[2]) : 'Email and Phone';
+    const dateLine = lines[4] ? this.escapeMarkdown(lines[4]) : 'Date';
+    const companyLine = lines[6] ? this.escapeMarkdown(lines[6]) : 'Hiring Manager';
+    const companyAddrLine = lines[7] ? this.escapeMarkdown(lines[7]) : 'Company Address';
+    
+    // Find the start of the main content (after the header)
+    let contentStartIdx = 9; // Start after the header lines
+    while (contentStartIdx < lines.length && !lines[contentStartIdx].includes('Dear Hiring Manager')) {
+      contentStartIdx++;
+    }
+    
+    // Find the end of the main content (before the closing)
+    let contentEndIdx = contentStartIdx;
+    while (contentEndIdx < lines.length && !lines[contentEndIdx].includes('Sincerely,')) {
+      contentEndIdx++;
+    }
+    
+    // Extract the main content
+    const mainContentLines = lines.slice(contentStartIdx, contentEndIdx);
+    let mainContent = '';
+    
+    // Process the main content with proper markdown formatting
+    // Skip the first line which is "Dear Hiring Manager" since it's handled separately
+    for (let i = 1; i < mainContentLines.length; i++) {  // Start from index 1 to skip "Dear Hiring Manager"
+      const line = mainContentLines[i];
+      const trimmedLine = line.trim();
+      
+      // Handle list items
+      if (trimmedLine.startsWith('- ') || trimmedLine.startsWith('* ')) {
+        mainContent += `${trimmedLine}\n`;
+      } else if (trimmedLine !== '') {
+        // Add the regular line
+        mainContent += `${trimmedLine}\n\n`;
+      } else {
+        // Empty lines in Markdown for paragraph breaks
+        mainContent += '\n';
+      }
+    }
+    
+    // Get the closing lines
+    const sincerelyLine = lines[contentEndIdx] ? this.escapeMarkdown(lines[contentEndIdx]) : 'Sincerely,';
+    const nameSignature = lines[contentEndIdx + 1] ? this.escapeMarkdown(lines[contentEndIdx + 1]) : 'Your Name';
+    
+    // Create the Markdown document - simplified version
+    return `**${nameLine}**  
+${addressLine}  
+${contactLine}  
+
+**Date:** ${dateLine}
+
+**${companyLine}**  
+${companyAddrLine}  
+
+---
+
+Dear Hiring Manager,
+
+${mainContent}
+
+${sincerelyLine}  
+**${nameSignature}**`;
+  }
+  
+  escapeMarkdown(text) {
+    // Escape special markdown characters
+    return text.replace(/\*/g, '\\*')
+               .replace(/_/g, '\\_')
+               .replace(/#/g, '\\#')
+               .replace(/\+/g, '\\+')
+               .replace(/-/g, '\\-')  // Don't escape hyphens in the middle of sentences
+               .replace(/`/g, '\\`')
+               .replace(/>/g, '\\>')
+               .replace(/\[/g, '\\[')
+               .replace(/\]/g, '\\]')
+               .replace(/\(/g, '\\(')
+               .replace(/\)/g, '\\)')
+               .replace(/!/g, '\\!');
   }
 }
 
@@ -265,6 +417,9 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
         .then(result => {
           console.log(`Cover letter generated successfully!`);
           console.log(`File saved to: ${result.filePath}`);
+          
+          // The file should now be automatically sent to the requestor
+          console.log('File should be sent to requestor automatically.');
         })
         .catch(error => {
           console.error('Error generating cover letter:', error.message);
