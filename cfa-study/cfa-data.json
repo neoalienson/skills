@@ -1,0 +1,102 @@
+{
+  "userId": 1706583600000,
+  "currentLevel": 1,
+  "startDate": "2026-01-30T06:37:00.000Z",
+  "targetExamDate": null,
+  "studyHours": 4.0,
+  "topics": {
+    "Ethics": {
+      "level1": 2.5,
+      "level2": 0,
+      "level3": 0,
+      "completed": false
+    },
+    "Quantitative Methods": {
+      "level1": 1.5,
+      "level2": 0,
+      "level3": 0,
+      "completed": false
+    },
+    "Economics": {
+      "level1": 0,
+      "level2": 0,
+      "level3": 0,
+      "completed": false
+    },
+    "Financial Reporting and Analysis": {
+      "level1": 0,
+      "level2": 0,
+      "level3": 0,
+      "completed": false
+    },
+    "Corporate Finance": {
+      "level1": 0,
+      "level2": 0,
+      "level3": 0,
+      "completed": false
+    },
+    "Equity Investments": {
+      "level1": 0,
+      "level2": 0,
+      "level3": 0,
+      "completed": false
+    },
+    "Fixed Income": {
+      "level1": 0,
+      "level2": 0,
+      "level3": 0,
+      "completed": false
+    },
+    "Derivatives": {
+      "level1": 0,
+      "level2": 0,
+      "level3": 0,
+      "completed": false
+    },
+    "Alternative Investments": {
+      "level1": 0,
+      "level2": 0,
+      "level3": 0,
+      "completed": false
+    },
+    "Portfolio Management": {
+      "level1": 0,
+      "level2": 0,
+      "level3": 0,
+      "completed": false
+    }
+  },
+  "completedLevels": [],
+  "lastStudyDate": "2026-02-01T16:05:35.181939",
+  "streak": 1,
+  "totalQuestionsAnswered": 33,
+  "correctAnswers": 22,
+  "performanceByTopic": {
+    "Ethics": {
+      "attempts": 9,
+      "correct": 5,
+      "timeSpent": 540
+    },
+    "Quantitative Methods": {
+      "attempts": 3,
+      "correct": 2,
+      "timeSpent": 180
+    },
+    "Economics": {
+      "attempts": 4,
+      "correct": 3,
+      "timeSpent": 240
+    },
+    "Financial Reporting and Analysis": {
+      "attempts": 5,
+      "correct": 2,
+      "timeSpent": 300
+    },
+    "Corporate Finance": {
+      "attempts": 2,
+      "correct": 2,
+      "timeSpent": 120
+    }
+  },
+  "tutorMode": true
+}
