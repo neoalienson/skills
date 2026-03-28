@@ -282,10 +282,6 @@ class TestMain:
 
 
 class TestTimezone:
-    def test_get_timezone_default(self):
-        tz = get_timezone()
-        assert str(tz) == "Asia/Shanghai" or tz == timezone(timedelta(hours=8))
-
     def test_get_timezone_from_env(self):
         with patch.dict(os.environ, {"MINIMAX_TIMEZONE": "America/New_York"}):
             import importlib
@@ -301,7 +297,7 @@ class TestTimezone:
             import fetch_usage
             importlib.reload(fetch_usage)
             tz = fetch_usage.get_timezone()
-            assert tz == timezone(timedelta(hours=8))
+            assert tz == fetch_usage.get_local_timezone()
             importlib.reload(fetch_usage)
 
     def test_get_timezone_explicit(self):
@@ -310,6 +306,54 @@ class TestTimezone:
         importlib.reload(fetch_usage)
         tz = fetch_usage.get_timezone("America/Los_Angeles")
         assert str(tz) == "America/Los_Angeles"
+
+    def test_init_timezone_from_config(self):
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(tempfile.mkdtemp())
+            with open("config.yml", "w") as f:
+                f.write("timezone: America/Los_Angeles\n")
+            
+            import importlib
+            import fetch_usage
+            importlib.reload(fetch_usage)
+            tz = fetch_usage.init_timezone()
+            assert str(tz) == "America/Los_Angeles"
+            importlib.reload(fetch_usage)
+        finally:
+            os.chdir(original_cwd)
+
+    def test_init_timezone_env_overrides_config(self):
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(tempfile.mkdtemp())
+            with open("config.yml", "w") as f:
+                f.write("timezone: America/Los_Angeles\n")
+            
+            with patch.dict(os.environ, {"MINIMAX_TIMEZONE": "Europe/London"}):
+                import importlib
+                import fetch_usage
+                importlib.reload(fetch_usage)
+                tz = fetch_usage.init_timezone()
+                assert str(tz) == "Europe/London"
+                importlib.reload(fetch_usage)
+        finally:
+            os.chdir(original_cwd)
+
+    def test_init_timezone_default_is_local(self):
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(tempfile.mkdtemp())
+            
+            import importlib
+            import fetch_usage
+            importlib.reload(fetch_usage)
+            tz = fetch_usage.init_timezone()
+            local_tz = fetch_usage.get_local_timezone()
+            assert tz == local_tz
+            importlib.reload(fetch_usage)
+        finally:
+            os.chdir(original_cwd)
 
 
 if __name__ == "__main__":

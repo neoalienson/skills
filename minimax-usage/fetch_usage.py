@@ -11,28 +11,45 @@ import yaml
 from datetime import datetime, timezone, timedelta
 from time_calc import get_current_interval, get_next_reset_time, get_time_until_reset, get_elapsed_in_interval
 
+def get_local_timezone():
+    import zoneinfo
+    return datetime.now().astimezone().tzinfo
+
 def get_timezone(tz_name=None):
     if tz_name is None:
-        tz_name = os.environ.get("MINIMAX_TIMEZONE", "Asia/Shanghai")
+        tz_name = os.environ.get("MINIMAX_TIMEZONE")
+        if tz_name is None:
+            return get_local_timezone()
     
     import zoneinfo
     try:
         return zoneinfo.ZoneInfo(tz_name)
     except KeyError:
-        return timezone(timedelta(hours=8))
-
-TZ = get_timezone()
-
-def now_utc8():
-    return datetime.now(timezone.utc).astimezone(TZ)
+        return get_local_timezone()
 
 def load_config():
     config_paths = [os.path.expanduser("~/.minimax_config.yml"), "config.yml"]
     for path in config_paths:
         if os.path.exists(path):
             with open(path, "r") as f:
-                return yaml.safe_load(f)
+                return yaml.safe_load(f) or {}
     return {}
+
+def init_timezone():
+    config = load_config()
+    tz_name = os.environ.get("MINIMAX_TIMEZONE") or config.get("timezone")
+    if tz_name is None:
+        return get_local_timezone()
+    import zoneinfo
+    try:
+        return zoneinfo.ZoneInfo(tz_name)
+    except KeyError:
+        return get_local_timezone()
+
+TZ = init_timezone()
+
+def now_utc8():
+    return datetime.now(timezone.utc).astimezone(TZ)
 
 def load_cookies():
     cookies = os.environ.get("MINIMAX_COOKIES", "")

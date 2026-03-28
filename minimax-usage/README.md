@@ -2,6 +2,11 @@
 
 A CLI tool to fetch and display your MiniMax API usage with precise time calculations.
 
+## Requirements
+
+- Python 3.9+
+- PyYAML (`pip install -r requirements.txt`)
+
 ## Setup
 
 ### 1. Get Cookies
@@ -21,17 +26,18 @@ export MINIMAX_COOKIES='your_cookie_value'
 Create a `config.yml` file:
 ```yaml
 minimax_cookies: your_cookie_value_here
-timezone: Asia/Shanghai
+# timezone: (optional, defaults to system timezone)
 ```
 
 ### 3. Configure Timezone (Optional)
 
-Set in `config.yml` or via `MINIMAX_TIMEZONE` env var (default: `Asia/Shanghai`):
+Set in `config.yml` or via `MINIMAX_TIMEZONE` env var (defaults to system timezone):
 ```yaml
 timezone: Asia/Shanghai
 ```
 
 Common values:
+- `UTC` - Coordinated Universal Time
 - `Asia/Shanghai` - China (UTC+8)
 - `America/New_York` - US Eastern
 - `America/Los_Angeles` - US Pacific
