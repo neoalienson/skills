@@ -10,12 +10,24 @@ import sys
 from datetime import datetime
 from time_calc import get_current_interval, get_next_reset_time, get_time_until_reset, get_elapsed_in_interval
 
-def fetch_usage():
+def load_cookies():
     cookies = os.environ.get("MINIMAX_COOKIES", "")
     if not cookies:
+        config_paths = [".minimax_cookies", "cookies.txt", os.path.expanduser("~/.minimax_cookies")]
+        for path in config_paths:
+            if os.path.exists(path):
+                with open(path, "r") as f:
+                    cookies = f.read().strip()
+                if cookies:
+                    break
+    if not cookies:
         print("❌ MINIMAX_COOKIES env var not set.")
-        print("   export MINIMAX_COOKIES='<your cookies>'")
+        print("   Set MINIMAX_COOKIES or create a config file (.minimax_cookies, cookies.txt, ~/.minimax_cookies)")
         sys.exit(1)
+    return cookies
+
+def fetch_usage():
+    cookies = load_cookies()
     
     cmd = [
         "curl", "-s",

@@ -63,7 +63,10 @@ jobs:
       with:
         python-version: '3.x'
 
+    - name: Install dependencies
+      run: pip install pytest
+
     - name: Run minimax-usage unit tests
       run: |
         cd minimax-usage
-        python -m unittest test_time_calc
+        python -m pytest
