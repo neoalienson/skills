@@ -1,5 +1,4 @@
-cookies.txt
-.minimax_cookies
+config.yml
 __pycache__/
 *.pyc
 .pytest_cache/

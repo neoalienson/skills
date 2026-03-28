@@ -1,9 +1,0 @@
-# MiniMax Cookies Configuration Sample
-# Copy this file to cookies.txt and fill in your cookies
-# 
-# To get your cookies:
-# 1. Login to https://platform.minimaxi.com
-# 2. Open Developer Tools (F12) -> Application -> Cookies
-# 3. Copy the cookie value and paste below
-
-MINIMAX_COOKIES=your_cookie_value_here

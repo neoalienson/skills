@@ -5,40 +5,82 @@ Fetch MiniMax API usage and report with precise time calculations.
 
 import json
 import os
-import subprocess
 import sys
-from datetime import datetime
+import urllib.request
+import yaml
+from datetime import datetime, timezone, timedelta
 from time_calc import get_current_interval, get_next_reset_time, get_time_until_reset, get_elapsed_in_interval
+
+def get_timezone(tz_name=None):
+    if tz_name is None:
+        tz_name = os.environ.get("MINIMAX_TIMEZONE", "Asia/Shanghai")
+    
+    import zoneinfo
+    try:
+        return zoneinfo.ZoneInfo(tz_name)
+    except KeyError:
+        return timezone(timedelta(hours=8))
+
+TZ = get_timezone()
+
+def now_utc8():
+    return datetime.now(timezone.utc).astimezone(TZ)
+
+def load_config():
+    config_paths = [os.path.expanduser("~/.minimax_config.yml"), "config.yml"]
+    for path in config_paths:
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                return yaml.safe_load(f)
+    return {}
 
 def load_cookies():
     cookies = os.environ.get("MINIMAX_COOKIES", "")
     if not cookies:
-        config_paths = [".minimax_cookies", "cookies.txt", os.path.expanduser("~/.minimax_cookies")]
-        for path in config_paths:
-            if os.path.exists(path):
-                with open(path, "r") as f:
-                    cookies = f.read().strip()
-                if cookies:
-                    break
+        config = load_config()
+        cookies = config.get("minimax_cookies", "")
     if not cookies:
         print("❌ MINIMAX_COOKIES env var not set.")
-        print("   Set MINIMAX_COOKIES or create a config file (.minimax_cookies, cookies.txt, ~/.minimax_cookies)")
+        print("   Set MINIMAX_COOKIES env var or create config.yml with minimax_cookies")
         sys.exit(1)
     return cookies
 
 def fetch_usage():
     cookies = load_cookies()
     
-    cmd = [
-        "curl", "-s",
+    req = urllib.request.Request(
         "https://www.minimaxi.com/v1/api/openplatform/coding_plan/remains?GroupId=2034608336271319731",
-        "-H", "Cookie: " + cookies,
-        "-H", "origin: https://platform.minimaxi.com",
-        "-H", "referer: https://platform.minimaxi.com/",
-        "-H", "user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 Edg/146.0.0.0"
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    return json.loads(result.stdout)
+        headers={
+            "Cookie": cookies,
+            "origin": "https://platform.minimaxi.com",
+            "referer": "https://platform.minimaxi.com/",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 Edg/146.0.0.0"
+        }
+    )
+    
+    try:
+        with urllib.request.urlopen(req, timeout=30) as response:
+            result = response.read().decode("utf-8")
+    except urllib.error.URLError as e:
+        print(f"❌ Network error: {e.reason}")
+        print("   Please check your internet connection.")
+        sys.exit(1)
+    except urllib.error.HTTPError as e:
+        print(f"❌ HTTP error: {e.code}")
+        print("   Cookies may be expired. Please update MINIMAX_COOKIES env var.")
+        sys.exit(1)
+    
+    if not result.strip():
+        print("❌ Failed to fetch usage data. Cookies may be expired.")
+        print("   Please update MINIMAX_COOKIES env var.")
+        sys.exit(1)
+    
+    try:
+        return json.loads(result)
+    except json.JSONDecodeError:
+        print("❌ Invalid response from API. Cookies may be expired.")
+        print("   Please update MINIMAX_COOKIES env var.")
+        sys.exit(1)
 
 def format_time_remaining(hours, minutes, seconds):
     if hours > 0:
@@ -74,7 +116,7 @@ def ascii_bar(used, total, block="█", width=20):
     return f"{bar} {pct:.0f}% ({used}/{total})"
 
 def main():
-    now = datetime.now()
+    now = now_utc8()
     data = fetch_usage()
     
     if data["base_resp"]["status_code"] == 1004:

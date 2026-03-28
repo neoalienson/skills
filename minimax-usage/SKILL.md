@@ -54,35 +54,10 @@ Resets at **00:00, 05:00, 10:00, 15:00, 20:00** (UTC+8) — every 5 hours.
 - **After reset** (HH:MM:SS with M/S/MS > 0): In the current interval
 - **At midnight with past-time** (00:01+): Still in 00:00–05:00 interval
 
-## Cookies
-
-Set the `MINIMAX_COOKIES` environment variable with your session cookies:
-
-```bash
-export MINIMAX_COOKIES='<your cookies>'
-```
-
-If the API returns `{"base_resp":{"status_code":1004,"status_msg":"cookie is missing, log in again"}}`, the cookies have expired — refresh them in your browser and update the env var.
-
-## API Endpoint
-
-```bash
-curl 'https://www.minimaxi.com/v1/api/openplatform/coding_plan/remains?GroupId=2034608336271319731' \
-  -H "Cookie: $MINIMAX_COOKIES" \
-  -H 'origin: https://platform.minimaxi.com' \
-  -H 'referer: https://platform.minimaxi.com/' \
-  -H 'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 Edg/146.0.0.0'
-```
-
 ## Key Interpretation
 
 - `current_interval_usage_count` = **remaining** quota (NOT used count)
 - `current_interval_total_count` = total allowed in interval
 - Used = total − remaining
 
-## Running Tests
-
-```bash
-cd ~/openclaw-git/skills/minimax-usage
-python3 -m pytest test_time_calc.py -v
-```
+If the API returns `{"base_resp":{"status_code":1004,"status_msg":"cookie is missing, log in again"}}`, the cookies have expired — refresh them in your browser and update the env var.

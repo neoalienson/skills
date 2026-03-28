@@ -4,12 +4,13 @@ import sys
 import tempfile
 import json
 import pytest
-from unittest.mock import patch, MagicMock
-from datetime import datetime
+from unittest.mock import patch, MagicMock, mock_open
+from datetime import datetime, timezone, timedelta
+from urllib.error import URLError, HTTPError
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from fetch_usage import load_cookies, fetch_usage, format_time_remaining, time_bar, ascii_bar, main
+from fetch_usage import load_cookies, fetch_usage, format_time_remaining, time_bar, ascii_bar, main, get_timezone, load_config
 
 class TestLoadCookies:
     def test_load_cookies_from_env(self):
@@ -18,16 +19,16 @@ class TestLoadCookies:
         assert cookies == "test_cookie_from_env"
         del os.environ["MINIMAX_COOKIES"]
 
-    def test_load_cookies_from_file(self):
+    def test_load_cookies_from_config_yml(self):
         original_cwd = os.getcwd()
         try:
             os.chdir(tempfile.mkdtemp())
-            with open("cookies.txt", "w") as f:
-                f.write("test_cookie_from_file")
+            with open("config.yml", "w") as f:
+                f.write("minimax_cookies: test_cookie_from_yaml\n")
             
             os.environ["MINIMAX_COOKIES"] = ""
             cookies = load_cookies()
-            assert cookies == "test_cookie_from_file"
+            assert cookies == "test_cookie_from_yaml"
             
             del os.environ["MINIMAX_COOKIES"]
         finally:
@@ -47,28 +48,13 @@ class TestLoadCookies:
         finally:
             os.chdir(original_cwd)
 
-    def test_load_cookies_from_dotminimax_file(self):
+    def test_load_cookies_from_home_config(self):
         original_cwd = os.getcwd()
-        try:
-            os.chdir(tempfile.mkdtemp())
-            with open(".minimax_cookies", "w") as f:
-                f.write("test_cookie_dotfile")
-            
-            os.environ["MINIMAX_COOKIES"] = ""
-            cookies = load_cookies()
-            assert cookies == "test_cookie_dotfile"
-            
-            del os.environ["MINIMAX_COOKIES"]
-        finally:
-            os.chdir(original_cwd)
-
-    def test_load_cookies_from_home_file(self):
-        original_cwd = os.getcwd()
-        home_file = os.path.expanduser("~/.minimax_cookies")
+        home_file = os.path.expanduser("~/.minimax_config.yml")
         try:
             os.chdir(tempfile.mkdtemp())
             with open(home_file, "w") as f:
-                f.write("test_cookie_home")
+                f.write("minimax_cookies: test_cookie_home\n")
             
             os.environ["MINIMAX_COOKIES"] = ""
             cookies = load_cookies()
@@ -80,105 +66,105 @@ class TestLoadCookies:
             if os.path.exists(home_file):
                 os.unlink(home_file)
 
-    def test_load_cookies_with_prefix(self):
+    def test_load_config_success(self):
         original_cwd = os.getcwd()
         try:
             os.chdir(tempfile.mkdtemp())
-            with open("cookies.txt", "w") as f:
-                f.write("MINIMAX_COOKIES=prefix_cookie_value")
+            with open("config.yml", "w") as f:
+                f.write("minimax_cookies: yaml_cookie\ntimezone: Asia/Shanghai\n")
             
-            os.environ["MINIMAX_COOKIES"] = ""
-            cookies = load_cookies()
-            assert cookies == "MINIMAX_COOKIES=prefix_cookie_value"
-            
-            del os.environ["MINIMAX_COOKIES"]
+            config = load_config()
+            assert config["minimax_cookies"] == "yaml_cookie"
+            assert config["timezone"] == "Asia/Shanghai"
         finally:
             os.chdir(original_cwd)
 
-    def test_load_cookies_empty_file(self):
+    def test_load_config_empty(self):
         original_cwd = os.getcwd()
         try:
             os.chdir(tempfile.mkdtemp())
-            with open("cookies.txt", "w") as f:
-                f.write("")
             
-            os.environ["MINIMAX_COOKIES"] = ""
-            
-            with pytest.raises(SystemExit) as exc_info:
-                load_cookies()
-            assert exc_info.value.code == 1
-            
-            del os.environ["MINIMAX_COOKIES"]
-        finally:
-            os.chdir(original_cwd)
-
-    def test_load_cookies_whitespace_only_file(self):
-        original_cwd = os.getcwd()
-        try:
-            os.chdir(tempfile.mkdtemp())
-            with open("cookies.txt", "w") as f:
-                f.write("   \n\t  \n")
-            
-            os.environ["MINIMAX_COOKIES"] = ""
-            
-            with pytest.raises(SystemExit) as exc_info:
-                load_cookies()
-            assert exc_info.value.code == 1
-            
-            del os.environ["MINIMAX_COOKIES"]
-        finally:
-            os.chdir(original_cwd)
-
-    def test_load_cookies_priority(self):
-        original_cwd = os.getcwd()
-        try:
-            os.chdir(tempfile.mkdtemp())
-            with open(".minimax_cookies", "w") as f:
-                f.write("first_priority")
-            with open("cookies.txt", "w") as f:
-                f.write("second_priority")
-            
-            os.environ["MINIMAX_COOKIES"] = ""
-            cookies = load_cookies()
-            assert cookies == "first_priority"
-            
-            del os.environ["MINIMAX_COOKIES"]
+            config = load_config()
+            assert config == {}
         finally:
             os.chdir(original_cwd)
 
 
 class TestFetchUsage:
-    @patch('fetch_usage.subprocess.run')
+    @patch('fetch_usage.urllib.request.urlopen')
     @patch('fetch_usage.load_cookies')
-    def test_fetch_usage_success(self, mock_load_cookies, mock_run):
+    def test_fetch_usage_success(self, mock_load_cookies, mock_urlopen):
         mock_load_cookies.return_value = "test_cookies"
-        mock_run.return_value = MagicMock(
-            stdout=json.dumps({"data": "test"})
-        )
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps({"data": "test"}).encode()
+        mock_urlopen.return_value.__enter__.return_value = mock_response
         
         result = fetch_usage()
         
         assert result == {"data": "test"}
         mock_load_cookies.assert_called_once()
-        mock_run.assert_called_once()
 
-    @patch('fetch_usage.subprocess.run')
+    @patch('fetch_usage.urllib.request.urlopen')
     @patch('fetch_usage.load_cookies')
-    def test_fetch_usage_with_real_api_response(self, mock_load_cookies, mock_run):
+    def test_fetch_usage_with_real_api_response(self, mock_load_cookies, mock_urlopen):
         mock_load_cookies.return_value = "test_cookies"
-        mock_run.return_value = MagicMock(
-            stdout=json.dumps({
-                "base_resp": {"status_code": 0},
-                "model_remains": [
-                    {"model_name": "MiniMax-M*", "current_interval_total_count": 100, "current_interval_usage_count": 50}
-                ]
-            })
-        )
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps({
+            "base_resp": {"status_code": 0},
+            "model_remains": [
+                {"model_name": "MiniMax-M*", "current_interval_total_count": 100, "current_interval_usage_count": 50}
+            ]
+        }).encode()
+        mock_urlopen.return_value.__enter__.return_value = mock_response
         
         result = fetch_usage()
         
         assert result["base_resp"]["status_code"] == 0
         assert len(result["model_remains"]) == 1
+
+    @patch('fetch_usage.urllib.request.urlopen')
+    @patch('fetch_usage.load_cookies')
+    def test_fetch_usage_empty_response(self, mock_load_cookies, mock_urlopen):
+        mock_load_cookies.return_value = "test_cookies"
+        mock_response = MagicMock()
+        mock_response.read.return_value = b""
+        mock_urlopen.return_value.__enter__.return_value = mock_response
+        
+        with pytest.raises(SystemExit) as exc_info:
+            fetch_usage()
+        assert exc_info.value.code == 1
+
+    @patch('fetch_usage.urllib.request.urlopen')
+    @patch('fetch_usage.load_cookies')
+    def test_fetch_usage_invalid_json(self, mock_load_cookies, mock_urlopen):
+        mock_load_cookies.return_value = "test_cookies"
+        mock_response = MagicMock()
+        mock_response.read.return_value = b"not valid json"
+        mock_urlopen.return_value.__enter__.return_value = mock_response
+        
+        with pytest.raises(SystemExit) as exc_info:
+            fetch_usage()
+        assert exc_info.value.code == 1
+
+    @patch('fetch_usage.urllib.request.urlopen')
+    @patch('fetch_usage.load_cookies')
+    def test_fetch_usage_network_error(self, mock_load_cookies, mock_urlopen):
+        mock_load_cookies.return_value = "test_cookies"
+        mock_urlopen.side_effect = URLError("Connection refused")
+        
+        with pytest.raises(SystemExit) as exc_info:
+            fetch_usage()
+        assert exc_info.value.code == 1
+
+    @patch('fetch_usage.urllib.request.urlopen')
+    @patch('fetch_usage.load_cookies')
+    def test_fetch_usage_http_error(self, mock_load_cookies, mock_urlopen):
+        mock_load_cookies.return_value = "test_cookies"
+        mock_urlopen.side_effect = HTTPError(url="", code=401, msg="Unauthorized", hdrs={}, fp=None)
+        
+        with pytest.raises(SystemExit) as exc_info:
+            fetch_usage()
+        assert exc_info.value.code == 1
 
 
 class TestFormatTimeRemaining:
@@ -293,6 +279,37 @@ class TestMain:
         }
         
         main()
+
+
+class TestTimezone:
+    def test_get_timezone_default(self):
+        tz = get_timezone()
+        assert str(tz) == "Asia/Shanghai" or tz == timezone(timedelta(hours=8))
+
+    def test_get_timezone_from_env(self):
+        with patch.dict(os.environ, {"MINIMAX_TIMEZONE": "America/New_York"}):
+            import importlib
+            import fetch_usage
+            importlib.reload(fetch_usage)
+            tz = fetch_usage.get_timezone()
+            assert str(tz) == "America/New_York"
+            importlib.reload(fetch_usage)
+
+    def test_get_timezone_invalid_fallback(self):
+        with patch.dict(os.environ, {"MINIMAX_TIMEZONE": "Invalid/Timezone"}):
+            import importlib
+            import fetch_usage
+            importlib.reload(fetch_usage)
+            tz = fetch_usage.get_timezone()
+            assert tz == timezone(timedelta(hours=8))
+            importlib.reload(fetch_usage)
+
+    def test_get_timezone_explicit(self):
+        import importlib
+        import fetch_usage
+        importlib.reload(fetch_usage)
+        tz = fetch_usage.get_timezone("America/Los_Angeles")
+        assert str(tz) == "America/Los_Angeles"
 
 
 if __name__ == "__main__":

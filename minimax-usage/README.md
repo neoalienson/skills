@@ -17,11 +17,25 @@ A CLI tool to fetch and display your MiniMax API usage with precise time calcula
 export MINIMAX_COOKIES='your_cookie_value'
 ```
 
-**Option B: Local Config File**
-Create a file named `cookies.txt` (or `.minimax_cookies`) in the project directory:
+**Option B: config.yml**
+Create a `config.yml` file:
+```yaml
+minimax_cookies: your_cookie_value_here
+timezone: Asia/Shanghai
 ```
-MINIMAX_COOKIES=your_cookie_value
+
+### 3. Configure Timezone (Optional)
+
+Set in `config.yml` or via `MINIMAX_TIMEZONE` env var (default: `Asia/Shanghai`):
+```yaml
+timezone: Asia/Shanghai
 ```
+
+Common values:
+- `Asia/Shanghai` - China (UTC+8)
+- `America/New_York` - US Eastern
+- `America/Los_Angeles` - US Pacific
+- `Europe/London` - UK
 
 ## Usage
 
@@ -32,5 +46,5 @@ python fetch_usage.py
 ## Run Tests
 
 ```bash
-python test_fetch_usage.py
+pytest
 ```
