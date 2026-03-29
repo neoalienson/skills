@@ -39,16 +39,11 @@ def load_config():
 def init_timezone():
     config = load_config()
     tz_name = os.environ.get("MINIMAX_TIMEZONE") or config.get("timezone")
-    print(f"[DEBUG] config={config}, tz_name={tz_name}, MINIMAX_TIMEZONE env={os.environ.get('MINIMAX_TIMEZONE')}")
     if tz_name is None:
-        tz = get_local_timezone()
-        print(f"Using local timezone: {tz}")
-        return tz
+        return get_local_timezone()
     import zoneinfo
     try:
-        tz = zoneinfo.ZoneInfo(tz_name)
-        print(f"Using timezone from config: {tz}")
-        return tz
+        return zoneinfo.ZoneInfo(tz_name)
     except KeyError:
         print(f"⚠️  Invalid timezone '{tz_name}', falling back to local timezone")
         return get_local_timezone()
