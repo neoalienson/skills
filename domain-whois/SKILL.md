@@ -1,6 +1,13 @@
 ---
 name: domain-whois
 description: Execute the whois command to retrieve domain registration information. Use when users request domain ownership, registration details, or DNS information for a specific domain.
+metadata:
+  {
+    "openclaw": {
+      "requires": { "anyBins": ["whois"] },
+      "tags": ["whois", "domain", "dns", "lookup", "registration"]
+    },
+  }
 ---
 
 # Domain Whois Skill
