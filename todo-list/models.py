@@ -10,7 +10,7 @@ class TodoItem(BaseModel):
     text: str = Field(..., min_length=1)
     completed: bool = False
     createdAt: Optional[str] = None
-    priority: Literal['high', 'medium', 'low'] = 'medium'
+    priority: Literal['high', 'medium', 'low', 'backlog'] = 'medium'
     dueDate: Optional[str] = None
     category: str = 'no category'
     assignee: Optional[str] = None

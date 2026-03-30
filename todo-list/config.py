@@ -23,7 +23,8 @@ class GitHubConfig:
 @dataclass
 class SupabaseConfig:
     url: str = ''
-    anon_key: str = ''
+    publishable_key: str = ''
+    secret_key: str = ''
     todos_table: str = 'todos'
     categories_table: str = 'categories'
 
@@ -94,7 +95,8 @@ class Config:
             supabase_data = storage_data.get('supabase', {})
             self.storage.supabase = SupabaseConfig(
                 url=supabase_data.get('url', ''),
-                anon_key=supabase_data.get('anon_key', ''),
+                publishable_key=supabase_data.get('publishable_key', ''),
+                secret_key=supabase_data.get('secret_key', ''),
                 todos_table=supabase_data.get('todos_table', 'todos'),
                 categories_table=supabase_data.get('categories_table', 'categories')
             )
@@ -129,5 +131,5 @@ class Config:
                 raise ValueError('Supabase storage configuration is missing')
             if not self.storage.supabase.url:
                 raise ValueError('Supabase url is required')
-            if not self.storage.supabase.anon_key:
-                raise ValueError('Supabase anon_key is required')
+            if not self.storage.supabase.secret_key:
+                raise ValueError('Supabase secret_key is required')

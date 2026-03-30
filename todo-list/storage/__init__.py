@@ -20,7 +20,8 @@ def get_storage(storage_type: str, **kwargs) -> StorageBackend:
         from .supabase import SupabaseStorage
         return SupabaseStorage(
             url=kwargs.get('url', ''),
-            anon_key=kwargs.get('anon_key', ''),
+            secret_key=kwargs.get('secret_key', ''),
+            publishable_key=kwargs.get('publishable_key', ''),
             todos_table=kwargs.get('todos_table', 'todos'),
             categories_table=kwargs.get('categories_table', 'categories')
         )

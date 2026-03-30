@@ -12,18 +12,16 @@ def main():
         print('''Todo List Manager
 
 Usage:
-  /todo add [--priority high|medium|low] [--due YYYY-MM-DD] [--category NAME] [--assignee NAME] <item text>
+  /todo add [--priority high|medium|low|backlog] [--due YYYY-MM-DD] [--category NAME] [--assignee NAME] <item text>
   /todo list [--filter all|pending|completed] [--assignee NAME]
-  /todo update <id> [--text "text"] [--priority high|medium|low] [--due YYYY-MM-DD] [--category NAME] [--assignee NAME] [--completed|--pending]
+  /todo update <id> [--text "text"] [--priority high|medium|low|backlog] [--due YYYY-MM-DD] [--category NAME] [--assignee NAME] [--completed|--pending]
   /todo complete <id>
   /todo remove <id>
-  /todo clear-completed
   /todo stats
   /todo categories
   /todo add-category <name>
   /todo remove-category <name>
-  /todo set-category <id> <category>  (deprecated)
-''')
+ ''')
         sys.exit(0)
 
     try:

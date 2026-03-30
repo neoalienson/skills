@@ -25,6 +25,8 @@ class TodoManager:
 
         self.todos = []
         self.categories = ['no category']
+        self._original_ids = set()  # Track IDs loaded from storage
+        self._deleted_ids = set()    # Track deleted IDs for sync
         self.load_todos()
 
     def _create_storage_from_config(self, cfg):
@@ -47,7 +49,8 @@ class TodoManager:
             return storage.get_storage(
                 'supabase',
                 url=cfg.storage.supabase.url,
-                anon_key=cfg.storage.supabase.anon_key,
+                secret_key=cfg.storage.supabase.secret_key,
+                publishable_key=cfg.storage.supabase.publishable_key,
                 todos_table=cfg.storage.supabase.todos_table,
                 categories_table=cfg.storage.supabase.categories_table
             )
@@ -60,21 +63,67 @@ class TodoManager:
             todo_data = data.get('todos', [])
             self.todos = [TodoItem.from_dict(t) for t in todo_data]
             self.categories = data.get('categories', ['no category'])
+            # Track original IDs for sync
+            self._original_ids = {t.id for t in self.todos}
+            self._deleted_ids = set()
         except Exception as e:
             print(f'Error loading todos: {e}')
             self.todos = []
             self.categories = ['no category']
+            self._original_ids = set()
+            self._deleted_ids = set()
 
     def save_todos(self):
         try:
-            data_to_save = {
-                'todos': [t.model_dump() for t in self.todos],
-                'categories': self.categories
-            }
-            self._storage.save(data_to_save)
+            # Check if storage supports individual add/update/delete
+            has_add = hasattr(self._storage, 'add') and callable(getattr(self._storage, 'add', None))
+            has_update = hasattr(self._storage, 'update') and callable(getattr(self._storage, 'update', None))
+            has_delete = hasattr(self._storage, 'delete') and callable(getattr(self._storage, 'delete', None))
+            
+            supports_crud = has_add and has_update and has_delete
+            
+            if supports_crud:
+                # Use individual add/update/delete for Supabase
+                current_ids = set()
+                
+                for todo in self.todos:
+                    todo_dict = todo.model_dump()
+                    current_ids.add(todo.id)
+                    
+                    if todo.id not in self._original_ids:
+                        # New todo - insert and get generated ID
+                        new_id = self._storage.add(todo_dict)
+                        todo.id = new_id
+                    else:
+                        # Existing todo - update
+                        self._storage.update(todo_dict)
+                
+                # Delete removed todos
+                for deleted_id in self._deleted_ids:
+                    if deleted_id in self._original_ids:
+                        self._storage.delete(deleted_id)
+                
+                # Save categories
+                data_to_save = {'categories': self.categories}
+                self._storage.save(data_to_save)
+                
+                # Reset tracking
+                self._original_ids = current_ids
+                self._deleted_ids = set()
+            else:
+                # Use bulk save for Local/GitHub storage
+                data_to_save = {
+                    'todos': [t.model_dump() for t in self.todos],
+                    'categories': self.categories
+                }
+                self._storage.save(data_to_save)
         except Exception as e:
             print(f'Error saving todos: {e}')
             raise
+
+    def _get_category_name(self, cat):
+        """Get category name from either dict or string format."""
+        return cat['name'].lower() if isinstance(cat, dict) else cat.lower()
 
     def add_category(self, category_name):
         if category_name is None or (isinstance(category_name, str) and not category_name.strip()):
@@ -83,10 +132,10 @@ class TodoManager:
         normalized_category = category_name.strip()
 
         for cat in self.categories:
-            if cat.lower() == normalized_category.lower():
+            if self._get_category_name(cat) == normalized_category.lower():
                 return False
 
-        self.categories.append(normalized_category)
+        self.categories.append({"name": normalized_category})
         self.save_todos()
         return True
 
@@ -94,14 +143,14 @@ class TodoManager:
         if category_name is None or (isinstance(category_name, str) and not category_name.strip()):
             raise ValueError('Category name cannot be empty')
 
-        if len(self.categories) == 1 and self.categories[0].lower() == category_name.strip().lower():
+        if len(self.categories) == 1 and self._get_category_name(self.categories[0]) == category_name.strip().lower():
             raise ValueError('Cannot remove the last remaining category')
 
         normalized_category = category_name.strip()
         initial_length = len(self.categories)
 
         self.categories = [cat for cat in self.categories
-                          if cat.lower() != normalized_category.lower()]
+                          if self._get_category_name(cat) != normalized_category.lower()]
 
         if initial_length != len(self.categories):
             for todo in self.todos:
@@ -113,13 +162,13 @@ class TodoManager:
         return False
 
     def list_categories(self):
-        return list(self.categories)
+        return [c['name'] if isinstance(c, dict) else c for c in self.categories]
 
     def add_todo(self, item, priority='medium', due_date=None, category='no category', assignee=None):
         if item is None or (isinstance(item, str) and not item.strip()):
             raise ValueError('Todo text cannot be empty')
 
-        valid_priorities = ['high', 'medium', 'low']
+        valid_priorities = ['high', 'medium', 'low', 'backlog']
         if priority not in valid_priorities:
             raise ValueError(f'Invalid priority "{priority}". Must be one of: {", ".join(valid_priorities)}')
 
@@ -147,8 +196,15 @@ class TodoManager:
         self.save_todos()
         return new_todo
 
-    def list_todos(self, filter_type='all', category=None, assignee=None):
+    def list_todos(self, filter_type='all', category=None, assignee=None, list_='default'):
         filtered_todos = list(self.todos)
+
+        if list_ == 'default':
+            filtered_todos = [t for t in filtered_todos if t.priority.lower() != 'backlog']
+        elif list_ == 'backlog':
+            filtered_todos = [t for t in filtered_todos if t.priority.lower() == 'backlog']
+        elif list_ == 'all':
+            pass
 
         if category:
             category_lower = category.lower()
@@ -211,14 +267,12 @@ class TodoManager:
         for i, todo in enumerate(self.todos):
             if todo.id == todo_id:
                 removed = self.todos.pop(i)
+                self._deleted_ids.add(todo_id)
                 self.save_todos()
                 return removed
         return None
 
-    def clear_completed(self):
-        self.todos = [todo for todo in self.todos if not todo.completed]
-        self.save_todos()
-        return len(self.todos)
+
 
     def get_stats(self):
         total = len(self.todos)
@@ -250,10 +304,7 @@ class TodoManager:
             'categories': categories
         }
 
-    def update_todo_category(self, todo_id, new_category):
-        if not new_category:
-            raise ValueError('Category cannot be empty')
-        return self.update_todo(todo_id, category=new_category)
+
 
     def update_todo(self, todo_id, **kwargs) -> TodoItem | None:
         for todo in self.todos:
@@ -266,8 +317,8 @@ class TodoManager:
 
                 if 'priority' in kwargs:
                     priority = kwargs['priority']
-                    if priority not in ('high', 'medium', 'low'):
-                        raise ValueError(f'Invalid priority "{priority}". Must be one of: high, medium, low')
+                    if priority not in ('high', 'medium', 'low', 'backlog'):
+                        raise ValueError(f'Invalid priority "{priority}". Must be one of: high, medium, low, backlog')
                     todo.priority = priority
 
                 if 'due_date' in kwargs:
@@ -281,12 +332,24 @@ class TodoManager:
 
                 if 'category' in kwargs:
                     category = kwargs['category']
-                    if category and category not in self.categories:
+                    category_names = self.list_categories()
+                    if category and category not in category_names:
                         self.add_category(category)
                     todo.category = category if category else 'no category'
 
                 if 'assignee' in kwargs:
                     todo.assignee = kwargs['assignee']
+
+                if 'id' in kwargs:
+                    new_id = kwargs['id']
+                    if not isinstance(new_id, int):
+                        try:
+                            new_id = int(new_id)
+                        except (ValueError, TypeError):
+                            raise ValueError(f'Invalid ID "{new_id}". Must be an integer')
+                    if any(t.id == new_id and t.id != todo_id for t in self.todos):
+                        raise ValueError(f'ID {new_id} already exists')
+                    todo.id = new_id
 
                 if 'completed' in kwargs:
                     todo.completed = kwargs['completed']
@@ -300,16 +363,7 @@ class TodoManager:
         return None
 
 
-def schedule_reminder(todo_id, todo_text, delay_minutes, todo_manager):
-    try:
-        message = f"Reminder: Please complete your task - {todo_text}"
-        reminder_command = f'message --action send --target "+85265432195" --message "{message}"'
 
-        print(f'To schedule a reminder for this task, please run the following command separately:')
-        print(f'clawdbot cron --action add --job \'{{"schedule": "*/{delay_minutes} * * * *", "command": "{reminder_command}", "description": "Reminder for todo {todo_id}: {todo_text}", "channel": "whatsapp"}}\'')
-        print(f'Or for a one-time reminder in {delay_minutes} minutes, calculate the exact time and schedule accordingly.')
-    except Exception as error:
-        print(f'Error scheduling reminder: {error}')
 
 
 def main():
@@ -319,18 +373,16 @@ def main():
         print('''Todo List Manager
 
 Usage:
-  todo add [--priority high|medium|low] [--due YYYY-MM-DD] [--category NAME] [--assignee NAME] <item text>
-  todo list [--filter all|pending|completed] [--assignee NAME]
-  todo update <id> [--text "text"] [--priority high|medium|low] [--due YYYY-MM-DD] [--category NAME] [--assignee NAME] [--completed|--pending]
+  todo add [--priority high|medium|low|backlog] [--due YYYY-MM-DD] [--category NAME] [--assignee NAME] <item text>
+  todo list [--filter all|pending|completed] [--list default|backlog|all] [--category NAME] [--assignee NAME] [--json|--text]
+  todo update <id> [--text "text"] [--priority high|medium|low|backlog] [--due YYYY-MM-DD] [--category NAME] [--assignee NAME] [--completed|--pending] [--id NEW_ID]
   todo complete <id>
   todo remove <id>
-  todo clear-completed
   todo stats
   todo categories
   todo add-category <name>
   todo remove-category <name>
-  todo set-category <id> <category>  (deprecated, use update)
-  todo remind <id> <minutes>''')
+  todo export [--format json|yaml]''')
         sys.exit(0)
 
     command = sys.argv[1]
@@ -346,10 +398,10 @@ Usage:
     if command == 'add':
         if args and args[0] in ('-h', '--help'):
             print('''Usage:
-  todo add [--priority high|medium|low] [--due YYYY-MM-DD] [--category NAME] [--assignee NAME] <item text>
+  todo add [--priority high|medium|low|backlog] [--due YYYY-MM-DD] [--category NAME] [--assignee NAME] <item text>
 
 Options:
-  --priority high|medium|low    Set priority (default: medium)
+  --priority high|medium|low|backlog    Set priority (default: medium)
   --due YYYY-MM-DD              Set due date
   --category NAME               Set category
   --assignee NAME              Set assignee (can be empty string)
@@ -399,7 +451,7 @@ Examples:
 
         if not item_text:
             print('Error: Item text is required')
-            print('Usage: todo add [--priority high|medium|low] [--due YYYY-MM-DD] [--category NAME] [--assignee NAME] <item text>')
+            print('Usage: todo add [--priority high|medium|low|backlog] [--due YYYY-MM-DD] [--category NAME] [--assignee NAME] <item text>')
             print('For help: todo add -h')
             sys.exit(1)
 
@@ -415,17 +467,18 @@ Examples:
     elif command in ('list', 'show'):
         if args and args[0] in ('-h', '--help'):
             print('''Usage:
-  todo list [--filter all|pending|completed] [--category NAME] [--assignee NAME] [--fields FIELD1,FIELD2,...] [--json|--text]
+  todo list [--filter all|pending|completed] [--category NAME] [--assignee NAME] [--list default|backlog|all] [--fields FIELD1,FIELD2,...] [--json|--text]
 
 Options:
   --filter all|pending|completed    Filter by status (default: pending)
   --category NAME                   Filter by category (case insensitive)
   --assignee NAME                   Filter by assignee (case insensitive)
+  --list default|backlog|all        Filter by list (default: default, excludes backlog)
   --pending                         Show pending todos only (default)
   --completed                       Show completed todos only
   --all                             Show all todos
   --fields FIELD1,FIELD2,...        Fields to display (for --text and --json)
-                                      Available: id, text, priority, dueDate, category, assignee, completed
+                                       Available: id, text, priority, dueDate, category, assignee, completed
   --json                            Output in JSON format (default)
   --text                            Output in human-readable text format
   -h, --help                        Show this help message''')
@@ -434,6 +487,7 @@ Options:
         filter_type = 'pending'
         category_filter = None
         assignee_filter = None
+        list_filter = 'default'
         fields = None
         output_format = 'json'
 
@@ -459,6 +513,7 @@ Options:
                 i += 1
             elif args[i] == '--all':
                 filter_type = 'all'
+                list_filter = 'all'
                 i += 1
             elif args[i] == '--fields' and i + 1 < len(args):
                 fields = [f.strip() for f in args[i + 1].split(',')]
@@ -469,10 +524,13 @@ Options:
             elif args[i] == '--text':
                 output_format = 'text'
                 i += 1
+            elif args[i] == '--list' and i + 1 < len(args):
+                list_filter = args[i + 1]
+                i += 2
             else:
                 i += 1
 
-        todos = todo_manager.list_todos(filter_type, category_filter, assignee_filter)
+        todos = todo_manager.list_todos(filter_type, category_filter, assignee_filter, list_filter)
 
         if not todos:
             if output_format == 'json':
@@ -548,10 +606,6 @@ Options:
         else:
             print(f'Todo with ID {args[0]} not found.')
 
-    elif command == 'clear-completed':
-        remaining_count = todo_manager.clear_completed()
-        print(f'Cleared all completed todos. {remaining_count} pending todos remain.')
-
     elif command == 'stats':
         stats = todo_manager.get_stats()
         print('Todo Statistics:')
@@ -603,39 +657,22 @@ Options:
             print(f'Error: {e}')
             sys.exit(1)
 
-    elif command in ('set-category', 'assign-category'):
-        if len(args) < 2:
-            print('Usage: todo set-category <id> <category name>')
-            print('Note: This command is deprecated. Use: todo update <id> --category <name>')
-            sys.exit(1)
-
-        todo_id = int(args[0])
-        new_category = ' '.join(args[1:])
-        try:
-            updated = todo_manager.update_todo_category(todo_id, new_category)
-            if updated:
-                print(f'Updated category for todo ID {todo_id} to: {new_category}')
-            else:
-                print(f'Todo with ID {todo_id} not found.')
-        except ValueError as e:
-            print(f'Error: {e}')
-            sys.exit(1)
-
     elif command == 'update':
         if not args or args[0] in ('-h', '--help'):
             print('''Usage:
-  todo update <id> [--text "text"] [--priority high|medium|low]
+  todo update <id> [--text "text"] [--priority high|medium|low|backlog]
                    [--due YYYY-MM-DD] [--category NAME] [--assignee NAME]
-                   [--completed | --pending]
+                   [--completed | --pending] [--id NEW_ID]
 
 Options:
   --text "text"                   Update the todo text
-  --priority high|medium|low      Update priority
+  --priority high|medium|low|backlog      Update priority
   --due YYYY-MM-DD              Update due date (use empty to clear)
   --category NAME               Update category
   --assignee NAME               Update assignee (use empty string to clear)
   --completed                   Mark as completed
   --pending                      Mark as pending
+  --id NEW_ID                   Change the todo ID
   -h, --help                    Show this help message
 
 Examples:
@@ -673,6 +710,9 @@ Examples:
             elif args[i] == '--pending':
                 update_kwargs['completed'] = False
                 i += 1
+            elif args[i] == '--id' and i + 1 < len(args):
+                update_kwargs['id'] = args[i + 1]
+                i += 2
             elif args[i].isdigit() and todo_id is None:
                 todo_id = int(args[i])
                 i += 1
@@ -681,7 +721,7 @@ Examples:
 
         if not todo_id:
             print('Error: Todo ID is required')
-            print('Usage: todo update <id> [--text "text"] [--priority high|medium|low] [--due YYYY-MM-DD] [--category NAME] [--assignee NAME]')
+            print('Usage: todo update <id> [--text "text"] [--priority high|medium|low|backlog] [--due YYYY-MM-DD] [--category NAME] [--assignee NAME]')
             sys.exit(1)
 
         try:
@@ -700,58 +740,20 @@ Examples:
             print(f'Error: {e}')
             sys.exit(1)
 
-    elif command in ('remind', 'schedule-reminder'):
-        if len(args) < 2:
-            print('Usage: todo remind <id> <minutes>')
-            sys.exit(1)
-
-        remind_todo_id = int(args[0])
-        try:
-            minutes = int(args[1])
-        except ValueError:
-            print('Please specify a valid number of minutes for the reminder.')
-            sys.exit(1)
-
-        todo = None
-        for t in todo_manager.todos:
-            if t.id == remind_todo_id:
-                todo = t
-                break
-
-        if not todo:
-            print(f'Todo with ID {remind_todo_id} not found.')
-            sys.exit(1)
-
-        message = f"Reminder: Please complete your task - {todo.text}"
-
-        now = datetime.now()
-        future_time = now + timedelta(minutes=minutes)
-        cron_minute = future_time.minute
-        cron_hour = future_time.hour
-        cron_day = future_time.day
-        cron_month = future_time.month
-
-        cron_command = f'clawdbot cron add --name "todo-reminder-{remind_todo_id}" --cron "{cron_minute} {cron_hour} {cron_day} {cron_month} *" --session isolated --message "{message}" --channel whatsapp --to "+85265432195" --deliver --delete-after-run'
-
-        print(f'Scheduling reminder for todo ID {remind_todo_id} ({todo["text"]}) in {minutes} minute(s)...')
-        print(f'Command to execute: {cron_command}')
-
     else:
         print('''Todo List Manager
 
 Usage:
-  todo add [--priority high|medium|low] [--due YYYY-MM-DD] [--category NAME] [--assignee NAME] <item text>
-  todo list [--filter all|pending|completed] [--assignee NAME]
-  todo update <id> [--text "text"] [--priority high|medium|low] [--due YYYY-MM-DD] [--category NAME] [--assignee NAME] [--completed|--pending]
+  todo add [--priority high|medium|low|backlog] [--due YYYY-MM-DD] [--category NAME] [--assignee NAME] <item text>
+  todo list [--filter all|pending|completed] [--list default|backlog|all] [--category NAME] [--assignee NAME] [--json|--text]
+  todo update <id> [--text "text"] [--priority high|medium|low|backlog] [--due YYYY-MM-DD] [--category NAME] [--assignee NAME] [--completed|--pending] [--id NEW_ID]
   todo complete <id>
   todo remove <id>
-  todo clear-completed
   todo stats
   todo categories
   todo add-category <name>
   todo remove-category <name>
-  todo set-category <id> <category>  (deprecated)
-  todo remind <id> <minutes>''')
+  todo export [--format json|yaml]''')
 
 
 if __name__ == '__main__':

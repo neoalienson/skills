@@ -49,3 +49,15 @@ class LocalStorage(StorageBackend):
     def exists(self) -> bool:
         """Check if local file exists."""
         return self.path.exists()
+
+    def add(self, todo: Dict[str, Any]) -> int:
+        """Add is not supported for local storage - use save() instead."""
+        raise NotImplementedError("add() not supported for local storage - use save() instead")
+
+    def update(self, todo: Dict[str, Any]) -> None:
+        """Update is not supported for local storage - use save() instead."""
+        raise NotImplementedError("update() not supported for local storage - use save() instead")
+
+    def delete(self, todo_id: int) -> None:
+        """Delete is not supported for local storage - use save() instead."""
+        raise NotImplementedError("delete() not supported for local storage - use save() instead")

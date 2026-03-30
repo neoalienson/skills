@@ -1,4 +1,7 @@
 import pytest
+import shutil
+import glob
+from pathlib import Path
 from copy import deepcopy
 from typing import Dict, Any
 
@@ -7,7 +10,7 @@ class MockStorage:
     """In-memory mock for StorageBackend - NO filesystem I/O."""
 
     def __init__(self, initial_data: Dict[str, Any] = None):
-        self._data = initial_data or {'todos': [], 'categories': ['no category']}
+        self._data = initial_data or {'todos': [], 'categories': [{'name': 'no category'}]}
         self._exists = True
         self.load_called = False
         self.save_called = False
@@ -18,14 +21,18 @@ class MockStorage:
         data = deepcopy(self._data)
         
         if data is None:
-            return {'todos': [], 'categories': ['no category']}
+            return {'todos': [], 'categories': [{'name': 'no category'}]}
 
         if isinstance(data, list):
-            return {'todos': data, 'categories': ['no category']}
+            return {'todos': data, 'categories': [{'name': 'no category'}]}
 
+        categories = data.get('categories', [{'name': 'no category'}])
+        if isinstance(categories, list) and categories and isinstance(categories[0], str):
+            categories = [{'name': c} for c in categories]
+        
         return {
             'todos': data.get('todos', []),
-            'categories': data.get('categories', ['no category'])
+            'categories': categories
         }
 
     def save(self, data: Dict[str, Any]) -> None:
@@ -73,5 +80,17 @@ def storage_with_todos():
                 'category': 'work'
             }
         ],
-        'categories': ['no category', 'work']
+        'categories': [{'name': 'no category'}, {'name': 'work'}]
     })
+
+
+@pytest.fixture(autouse=True)
+def cleanup_mock_folders():
+    """Clean up any mock folders created during tests."""
+    yield
+    test_dir = Path(__file__).parent.parent
+    for mock_folder in glob.glob(str(test_dir / "<MagicMock*")):
+        try:
+            shutil.rmtree(mock_folder)
+        except Exception:
+            pass

@@ -82,6 +82,89 @@ class TestBasicTodoOperations:
         assert completed_todos[0]['text'] == 'Completed task'
         assert completed_todos[0]['completed'] is True
 
+    def test_default_list_should_exclude_backlog_items(self, mock_storage):
+        todo_manager = TodoManager(storage_backend=mock_storage)
+
+        todo_manager.add_todo('Regular task')
+        todo_manager.add_todo('Backlog task', 'backlog', None, 'no category')
+
+        todos = todo_manager.list_todos(list_='default')
+        assert len(todos) == 1
+        assert todos[0]['text'] == 'Regular task'
+
+    def test_list_backlog_should_only_show_backlog_items(self, mock_storage):
+        todo_manager = TodoManager(storage_backend=mock_storage)
+
+        todo_manager.add_todo('Regular task')
+        todo_manager.add_todo('Backlog task 1', 'backlog', None, 'no category')
+        todo_manager.add_todo('Backlog task 2', 'backlog', None, 'work')
+
+        todos = todo_manager.list_todos(list_='backlog')
+        assert len(todos) == 2
+        assert all(t['priority'] == 'backlog' for t in todos)
+
+    def test_list_all_should_include_backlog_items(self, mock_storage):
+        todo_manager = TodoManager(storage_backend=mock_storage)
+
+        todo_manager.add_todo('Regular task')
+        todo_manager.add_todo('Backlog task', 'backlog', None, 'no category')
+
+        todos = todo_manager.list_todos(list_='all')
+        assert len(todos) == 2
+
+    def test_list_all_filter_shows_backlog_with_all_statuses(self, mock_storage):
+        todo_manager = TodoManager(storage_backend=mock_storage)
+
+        regular_pending = todo_manager.add_todo('Regular pending')
+        regular_completed = todo_manager.add_todo('Regular completed')
+        backlog_pending = todo_manager.add_todo('Backlog pending', 'backlog', None, 'no category')
+        backlog_completed = todo_manager.add_todo('Backlog completed', 'backlog', None, 'work')
+
+        todo_manager.mark_complete(regular_completed['id'])
+        todo_manager.mark_complete(backlog_completed['id'])
+
+        todos = todo_manager.list_todos('all', list_='all')
+        assert len(todos) == 4
+
+        todos = todo_manager.list_todos('pending', list_='all')
+        assert len(todos) == 2
+        pending_priorities = [t['priority'] for t in todos]
+        assert 'backlog' in pending_priorities
+
+        todos = todo_manager.list_todos('completed', list_='all')
+        assert len(todos) == 2
+        completed_priorities = [t['priority'] for t in todos]
+        assert 'backlog' in completed_priorities
+
+    def test_list_default_excludes_backlog_regardless_of_status(self, mock_storage):
+        todo_manager = TodoManager(storage_backend=mock_storage)
+
+        todo_manager.add_todo('Regular pending')
+        todo_manager.add_todo('Backlog pending', 'backlog', None, 'no category')
+
+        todos = todo_manager.list_todos('all', list_='default')
+        assert len(todos) == 1
+        assert todos[0]['priority'] != 'backlog'
+
+    def test_list_with_filter_and_backlog(self, mock_storage):
+        todo_manager = TodoManager(storage_backend=mock_storage)
+
+        regular_pending = todo_manager.add_todo('Pending regular')
+        regular_completed = todo_manager.add_todo('Completed regular')
+        backlog_pending = todo_manager.add_todo('Backlog pending', 'backlog', None, 'no category')
+        backlog_completed = todo_manager.add_todo('Backlog completed', 'backlog', None, 'work')
+
+        todo_manager.mark_complete(regular_completed['id'])
+        todo_manager.mark_complete(backlog_completed['id'])
+
+        default_pending = todo_manager.list_todos('pending', list_='default')
+        assert len(default_pending) == 1
+        assert default_pending[0]['text'] == 'Pending regular'
+
+        backlog_items = todo_manager.list_todos('pending', list_='backlog')
+        assert len(backlog_items) == 1
+        assert backlog_items[0]['text'] == 'Backlog pending'
+
     def test_should_mark_a_todo_as_complete(self, mock_storage):
         todo_manager = TodoManager(storage_backend=mock_storage)
 
@@ -105,23 +188,6 @@ class TestBasicTodoOperations:
 
         todos = todo_manager.list_todos()
         assert len(todos) == 0
-
-    def test_should_clear_completed_todos(self, mock_storage):
-        todo_manager = TodoManager(storage_backend=mock_storage)
-
-        todo1 = todo_manager.add_todo('Keep me')
-        todo2 = todo_manager.add_todo('Remove me')
-
-        todo_manager.mark_complete(todo2['id'])
-
-        remaining_count = todo_manager.clear_completed()
-        assert remaining_count == 1
-
-        todos = todo_manager.list_todos()
-        assert len(todos) == 1
-        remaining_todo = next(t for t in todos if t['id'] == todo1['id'])
-        assert remaining_todo['text'] == 'Keep me'
-
 
 class TestCategoryManagement:
     def test_should_add_a_new_category(self, mock_storage):
@@ -206,47 +272,6 @@ class TestCategoryManagement:
         with pytest.raises(ValueError, match='Category name cannot be empty'):
             todo_manager.remove_category('')
 
-    def test_should_update_todo_category(self, mock_storage):
-        todo_manager = TodoManager(storage_backend=mock_storage)
-
-        todo_manager.add_category('work')
-        todo_manager.add_category('personal')
-
-        todo = todo_manager.add_todo('Test task', 'medium', None, 'no category')
-
-        updated_todo = todo_manager.update_todo_category(todo['id'], 'work')
-        assert updated_todo['category'] == 'work'
-
-        all_todos = todo_manager.list_todos()
-        stored_todo = next(t for t in all_todos if t['id'] == todo['id'])
-        assert stored_todo['category'] == 'work'
-
-    def test_should_create_category_if_not_exists_when_updating_todo_category(self, mock_storage):
-        todo_manager = TodoManager(storage_backend=mock_storage)
-
-        todo = todo_manager.add_todo('Test task')
-
-        updated_todo = todo_manager.update_todo_category(todo['id'], 'new category')
-        assert updated_todo['category'] == 'new category'
-
-        categories = todo_manager.list_categories()
-        assert 'new category' in categories
-
-    def test_should_return_null_when_updating_category_for_non_existent_todo(self, mock_storage):
-        todo_manager = TodoManager(storage_backend=mock_storage)
-
-        result = todo_manager.update_todo_category(999999, 'work')
-        assert result is None
-
-    def test_should_reject_empty_category_name_when_updating_todo_category(self, mock_storage):
-        todo_manager = TodoManager(storage_backend=mock_storage)
-
-        todo = todo_manager.add_todo('Test task')
-
-        with pytest.raises(ValueError, match='Category cannot be empty'):
-            todo_manager.update_todo_category(todo['id'], '')
-
-
 class TestCategoryBasedFiltering:
     def test_should_list_todos_by_category(self, mock_storage):
         todo_manager = TodoManager(storage_backend=mock_storage)
@@ -317,7 +342,7 @@ class TestDataPersistence:
         assert mock_storage.save_called is True
 
         todos = mock_storage.last_saved_data['todos']
-        categories = mock_storage.last_saved_data['categories']
+        categories = todo_manager1.list_categories()
         assert len(todos) == 2
         assert 'work' in categories
         assert 'personal' in categories
@@ -386,9 +411,8 @@ class TestBackwardCompatibility:
 
         assert len(todo_manager.todos) == 1
         assert todo_manager.todos[0]['text'] == 'Old task'
-        assert todo_manager.todos[0]['id'] == 1
         assert len(todo_manager.categories) == 1
-        assert todo_manager.categories[0] == 'no category'
+        assert todo_manager.list_categories() == ['no category']
 
     def test_should_handle_missing_properties_in_old_format_gracefully(self, mock_storage):
         mock_storage.set_data([
@@ -830,6 +854,24 @@ class TestUpdateCommand:
         assert updated.completed is False
         assert updated.completedAt is None
 
+    def test_update_id(self, mock_storage):
+        todo_manager = TodoManager(storage_backend=mock_storage)
+        todo = todo_manager.add_todo('Test task')
+        original_id = todo.id
+
+        updated = todo_manager.update_todo(original_id, id=999)
+
+        assert updated.id == 999
+        assert original_id != 999
+
+    def test_update_id_duplicate_raises_error(self, mock_storage):
+        todo_manager = TodoManager(storage_backend=mock_storage)
+        todo1 = todo_manager.add_todo('Task 1')
+        todo2 = todo_manager.add_todo('Task 2')
+
+        with pytest.raises(ValueError, match='already exists'):
+            todo_manager.update_todo(todo2.id, id=todo1.id)
+
 
 class TestTodoItemModel:
     def test_todo_item_dict_access(self, mock_storage):
@@ -899,3 +941,77 @@ class TestTodoItemModel:
         assert todos[0].assignee is None
         assert todos[0].completedAt is None
         assert todos[0].priority == 'medium'
+
+
+class TestListCommandEdgeCases:
+    """Edge case tests for list command combinations."""
+
+    def test_list_backlog_with_filter_pending(self, mock_storage):
+        todo_manager = TodoManager(storage_backend=mock_storage)
+
+        backlog_pending = todo_manager.add_todo('Backlog pending', 'backlog', None, 'no category')
+        backlog_completed = todo_manager.add_todo('Backlog completed', 'backlog', None, 'work')
+
+        todo_manager.mark_complete(backlog_completed['id'])
+
+        todos = todo_manager.list_todos('pending', list_='backlog')
+        assert len(todos) == 1
+        assert todos[0]['text'] == 'Backlog pending'
+        assert todos[0]['completed'] is False
+
+    def test_list_backlog_with_filter_completed(self, mock_storage):
+        todo_manager = TodoManager(storage_backend=mock_storage)
+
+        backlog_pending = todo_manager.add_todo('Backlog pending', 'backlog', None, 'no category')
+        backlog_completed = todo_manager.add_todo('Backlog completed', 'backlog', None, 'work')
+
+        todo_manager.mark_complete(backlog_completed['id'])
+
+        todos = todo_manager.list_todos('completed', list_='backlog')
+        assert len(todos) == 1
+        assert todos[0]['text'] == 'Backlog completed'
+        assert todos[0]['completed'] is True
+
+    def test_list_default_with_filter_all_shows_non_backlog(self, mock_storage):
+        todo_manager = TodoManager(storage_backend=mock_storage)
+
+        todo_manager.add_todo('Regular pending')
+        todo_manager.add_todo('Regular completed')
+        todo_manager.add_todo('Backlog pending', 'backlog', None, 'no category')
+        todo_manager.add_todo('Backlog completed', 'backlog', None, 'work')
+
+        regular_completed = todo_manager.list_todos()[1]
+        todo_manager.mark_complete(regular_completed['id'])
+
+        todos = todo_manager.list_todos('all', list_='default')
+        assert len(todos) == 2
+        assert all(t['priority'] != 'backlog' for t in todos)
+
+    def test_list_default_with_filter_all_excludes_backlog_completed(self, mock_storage):
+        todo_manager = TodoManager(storage_backend=mock_storage)
+
+        todo_manager.add_todo('Regular pending')
+        todo_manager.add_todo('Backlog pending', 'backlog', None, 'no category')
+
+        todos = todo_manager.list_todos('pending', list_='default')
+        assert len(todos) == 1
+        assert todos[0]['text'] == 'Regular pending'
+
+    def test_list_all_includes_backlog_regardless_of_category(self, mock_storage):
+        todo_manager = TodoManager(storage_backend=mock_storage)
+
+        todo_manager.add_todo('Task with category', 'backlog', None, 'work')
+        todo_manager.add_todo('Task no category', 'backlog', None, 'no category')
+
+        todos = todo_manager.list_todos('all', list_='all')
+        assert len(todos) == 2
+        assert all(t['priority'] == 'backlog' for t in todos)
+
+    def test_list_backlog_empty_when_no_backlog_items(self, mock_storage):
+        todo_manager = TodoManager(storage_backend=mock_storage)
+
+        todo_manager.add_todo('Regular task', 'high')
+        todo_manager.add_todo('Another task', 'medium')
+
+        todos = todo_manager.list_todos(list_='backlog')
+        assert len(todos) == 0

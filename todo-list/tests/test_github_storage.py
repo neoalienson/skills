@@ -195,9 +195,12 @@ class TestGitHubStorageSaveCommandOrder:
     @patch('builtins.open', create=True)
     @patch('subprocess.run')
     def test_save_pull_uses_rebase_x_theirs(self, mock_run, mock_open, MockPath):
-        MockPath.return_value.exists.return_value = True
-        MockPath.return_value.__truediv__.return_value.exists.return_value = True
-        MockPath.return_value.__truediv__.return_value.parent.mkdir.return_value = None
+        mock_path_instance = MagicMock()
+        mock_path_instance.exists.return_value = True
+        mock_path_instance.__truediv__.return_value.exists.return_value = True
+        mock_path_instance.__truediv__.return_value.parent.mkdir.return_value = None
+        mock_path_instance.__truediv__.return_value.parent.mkdir.side_effect = lambda *args, **kwargs: None
+        MockPath.return_value = mock_path_instance
         mock_run.return_value = CompletedProcess(args=[], returncode=0, stdout='', stderr='')
         mock_open.return_value.__enter__.return_value.read.return_value = '{}'
 
@@ -224,8 +227,10 @@ class TestGitHubStorageSaveCommandOrder:
     @patch('builtins.open', create=True)
     @patch('subprocess.run')
     def test_save_fetch_before_pull(self, mock_run, mock_open, MockPath):
-        MockPath.return_value.exists.return_value = True
-        MockPath.return_value.__truediv__.return_value.exists.return_value = True
+        mock_path_instance = MagicMock()
+        mock_path_instance.exists.return_value = True
+        mock_path_instance.__truediv__.return_value.exists.return_value = True
+        MockPath.return_value = mock_path_instance
         mock_run.return_value = CompletedProcess(args=[], returncode=0, stdout='', stderr='')
         mock_open.return_value.__enter__.return_value.read.return_value = '{}'
 
@@ -247,8 +252,10 @@ class TestGitHubStorageSaveCommandOrder:
     @patch('builtins.open', create=True)
     @patch('subprocess.run')
     def test_save_push_after_commit(self, mock_run, mock_open, MockPath):
-        MockPath.return_value.exists.return_value = True
-        MockPath.return_value.__truediv__.return_value.exists.return_value = True
+        mock_path_instance = MagicMock()
+        mock_path_instance.exists.return_value = True
+        mock_path_instance.__truediv__.return_value.exists.return_value = True
+        MockPath.return_value = mock_path_instance
         mock_run.return_value = CompletedProcess(args=[], returncode=0, stdout='', stderr='')
         mock_open.return_value.__enter__.return_value.read.return_value = '{}'
 
@@ -270,8 +277,10 @@ class TestGitHubStorageSaveCommandOrder:
     @patch('builtins.open', create=True)
     @patch('subprocess.run')
     def test_save_nothing_to_commit_no_push(self, mock_run, mock_open, MockPath):
-        MockPath.return_value.exists.return_value = True
-        MockPath.return_value.__truediv__.return_value.exists.return_value = True
+        mock_path_instance = MagicMock()
+        mock_path_instance.exists.return_value = True
+        mock_path_instance.__truediv__.return_value.exists.return_value = True
+        MockPath.return_value = mock_path_instance
 
         def run_side_effect(*args, **kwargs):
             cmd = args[0] if args else kwargs.get('args', [])
@@ -297,8 +306,10 @@ class TestGitHubStorageSaveCommandOrder:
     @patch('builtins.open', create=True)
     @patch('subprocess.run')
     def test_save_clone_when_no_existing_repo(self, mock_run, mock_open, MockPath):
-        MockPath.return_value.exists.return_value = False
-        MockPath.return_value.__truediv__.return_value.exists.return_value = False
+        mock_path_instance = MagicMock()
+        mock_path_instance.exists.return_value = False
+        mock_path_instance.__truediv__.return_value.exists.return_value = False
+        MockPath.return_value = mock_path_instance
         mock_run.return_value = CompletedProcess(args=[], returncode=0, stdout='', stderr='')
         mock_open.return_value.__enter__.return_value.read.return_value = '{}'
 
@@ -319,8 +330,10 @@ class TestGitHubStorageSaveCommandOrder:
     @patch('builtins.open', create=True)
     @patch('subprocess.run')
     def test_save_reuses_existing_clone(self, mock_run, mock_open, MockPath):
-        MockPath.return_value.exists.return_value = True
-        MockPath.return_value.__truediv__.return_value.exists.return_value = True
+        mock_path_instance = MagicMock()
+        mock_path_instance.exists.return_value = True
+        mock_path_instance.__truediv__.return_value.exists.return_value = True
+        MockPath.return_value = mock_path_instance
         mock_run.return_value = CompletedProcess(args=[], returncode=0, stdout='', stderr='')
         mock_open.return_value.__enter__.return_value.read.return_value = '{}'
 
@@ -343,8 +356,10 @@ class TestGitHubStorageLoad:
     @patch('builtins.open', create=True)
     @patch('subprocess.run')
     def test_load_fetches_before_checkout(self, mock_run, mock_open, MockPath):
-        MockPath.return_value.exists.return_value = True
-        MockPath.return_value.__truediv__.return_value.exists.return_value = True
+        mock_path_instance = MagicMock()
+        mock_path_instance.exists.return_value = True
+        mock_path_instance.__truediv__.return_value.exists.return_value = True
+        MockPath.return_value = mock_path_instance
         mock_open.return_value.__enter__.return_value.read.return_value = '{"todos": [], "categories": []}'
         mock_run.return_value = CompletedProcess(args=[], returncode=0, stdout='', stderr='')
 
@@ -366,13 +381,15 @@ class TestGitHubStorageLoad:
     @patch('builtins.open', create=True)
     @patch('subprocess.run')
     def test_load_returns_default_when_file_missing(self, mock_run, mock_open, MockPath):
+        mock_path_instance = MagicMock()
         def exists_side_effect(path):
             path_str = str(path)
             if '.git' in path_str:
                 return True
             return False
-
-        MockPath.return_value.exists.side_effect = exists_side_effect
+        mock_path_instance.exists.side_effect = exists_side_effect
+        mock_path_instance.__truediv__.return_value.exists.return_value = True
+        MockPath.return_value = mock_path_instance
         mock_run.return_value = CompletedProcess(args=[], returncode=0, stdout='', stderr='')
         mock_open.return_value.__enter__.return_value.read.side_effect = FileNotFoundError()
 

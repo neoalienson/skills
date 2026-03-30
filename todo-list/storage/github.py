@@ -166,3 +166,15 @@ class GitHubStorage(StorageBackend):
             self.branch
         ])
         return result.returncode == 0
+
+    def add(self, todo: Dict[str, Any]) -> int:
+        """Add is not supported for GitHub storage - use save() instead."""
+        raise NotImplementedError("add() not supported for GitHub storage - use save() instead")
+
+    def update(self, todo: Dict[str, Any]) -> None:
+        """Update is not supported for GitHub storage - use save() instead."""
+        raise NotImplementedError("update() not supported for GitHub storage - use save() instead")
+
+    def delete(self, todo_id: int) -> None:
+        """Delete is not supported for GitHub storage - use save() instead."""
+        raise NotImplementedError("delete() not supported for GitHub storage - use save() instead")

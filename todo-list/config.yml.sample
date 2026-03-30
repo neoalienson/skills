@@ -35,8 +35,11 @@ storage:
     # Supabase project URL
     url: https://your-project.supabase.co
 
-    # Supabase anon key (public, safe for client)
-    anon_key: your-anon-key
+    # Supabase publishable key (public, safe for client)
+    publishable_key: your-publishable-key
+
+    # Supabase secret key (private, for server-side operations)
+    secret_key: your-secret-key
 
     # Table names (defaults shown)
     todos_table: todos
