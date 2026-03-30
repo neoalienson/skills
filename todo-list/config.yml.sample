@@ -1,0 +1,43 @@
+# Todo List Configuration
+# Copy this file to config.yml and customize as needed
+
+# Storage backend configuration
+# Supported types: local, github, supabase
+storage:
+  type: github  # REQUIRED: must be 'local', 'github', or 'supabase'
+
+  # Local storage settings (used when type=local)
+  local:
+    # Path to the todo data JSON file
+    path: ./todo-data.json
+
+  # GitHub storage settings (used when type=github)
+  github:
+    # Git repository URL - supports both SSH and HTTPS formats
+    # SSH:  git@github.com:user/repo.git
+    # HTTPS: https://github.com/user/repo.git
+    repo_url: git@github.com:Void-Bronco/todo-dashboard.git
+
+    # Branch to use (e.g., main, gh-pages, dev)
+    branch: gh-pages
+
+    # Path to the data file within the repository
+    data_file: todo-data.json
+
+    # Commit message template (use {timestamp} for current time)
+    commit_message: "Update todos {timestamp}"
+
+    # Clone directory (temporary directory will be used if not specified)
+    # clone_dir: /tmp/todo-clone
+
+  # Supabase storage settings (used when type=supabase)
+  supabase:
+    # Supabase project URL
+    url: https://your-project.supabase.co
+
+    # Supabase anon key (public, safe for client)
+    anon_key: your-anon-key
+
+    # Table names (defaults shown)
+    todos_table: todos
+    categories_table: categories

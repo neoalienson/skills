@@ -1,0 +1,21 @@
+[project]
+name = "clawdbot-skill-todo-list"
+version = "1.0.0"
+description = "A todo list manager skill for Clawdbot"
+requires-python = ">=3.8"
+dependencies = [
+    "pyyaml>=6.0",
+    "supabase>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]
+
+[project.scripts]
+todo = "todo:main"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
