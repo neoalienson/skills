@@ -39,6 +39,7 @@ timezone: Asia/Shanghai
 Common values:
 - `UTC` - Coordinated Universal Time
 - `Asia/Shanghai` - China (UTC+8)
+- `Asia/Hong_Kong` - Hong Kong (UTC+8)
 - `America/New_York` - US Eastern
 - `America/Los_Angeles` - US Pacific
 - `Europe/London` - UK
@@ -51,6 +52,42 @@ python fetch_usage.py [-c CONFIG_PATH]
 
 Options:
 - `-c CONFIG_PATH`  Path to config file (overrides default locations)
+
+## Sample Config
+
+```yaml
+minimax_cookies: sensorsdata2015jssdkchannel=...; HERTZ-SESSION=...
+timezone: Asia/Hong_Kong
+```
+
+## Automated Scheduling
+
+The script is designed for isolated, scheduled execution. Key settings for effective automation:
+
+### Recommended Schedule
+
+For Hong Kong timezone (UTC+8), runs before and after each 5-hour quota window:
+```
+0 02,03,08,09,13,14,16,18,19,22,23 * * *
+```
+
+### Session Settings
+
+- **isolated**: Fast execution, no context carryover
+- **wakeMode: now**: Start immediately at scheduled time
+- **timeoutSeconds: 600**: 10 minutes max per run
+- **lightContext: true**: Reduced context for speed
+
+### Sample Prompt for Job Scheduler
+
+```
+Use the "minimax-usage" skill for this request
+/home/neo/skills/minimax-usage/SKILL.md
+The config file locates at /home/neo/skills/minimax-usage/config.yml
+do not create new file
+stop when encounter any error
+keep the output format from the skill
+```
 
 ## Run Tests
 
