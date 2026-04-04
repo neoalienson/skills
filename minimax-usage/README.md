@@ -53,6 +53,33 @@ python fetch_usage.py [-c CONFIG_PATH]
 Options:
 - `-c CONFIG_PATH`  Path to config file (overrides default locations)
 
+## Troubleshooting
+
+### "complex interpreter invocation detected" Error
+
+If you see this error when scheduling:
+```
+[tools] exec failed: exec preflight: complex interpreter invocation detected; refusing to run without script preflight validation.
+```
+
+**Cause**: The scheduler is using a complex command like `cd /path && python3 script.py` which triggers preflight validation.
+
+**Solution**: Use the `-c` flag to specify the config path directly, avoiding the need for `cd`:
+
+```bash
+python3 /skills/minimax-usage/fetch_usage.py -c /skills/minimax-usage/config.yml
+```
+
+In your scheduler prompt, pass the config path via `-c`:
+```
+Use the "minimax-usage" skill for this request
+/skills/minimax-usage/SKILL.md
+-c /skills/minimax-usage/config.yml
+do not create new file
+stop when encounter any error
+keep the output format from the skill
+```
+
 ## Sample Config
 
 ```yaml
@@ -82,8 +109,8 @@ For Hong Kong timezone (UTC+8), runs before and after each 5-hour quota window:
 
 ```
 Use the "minimax-usage" skill for this request
-/home/neo/skills/minimax-usage/SKILL.md
-The config file locates at /home/neo/skills/minimax-usage/config.yml
+/skills/minimax-usage/SKILL.md
+The config file locates at /skills/minimax-usage/config.yml
 do not create new file
 stop when encounter any error
 keep the output format from the skill
