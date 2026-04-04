@@ -46,8 +46,11 @@ Common values:
 ## Usage
 
 ```bash
-python fetch_usage.py
+python fetch_usage.py [-c CONFIG_PATH]
 ```
+
+Options:
+- `-c CONFIG_PATH`  Path to config file (overrides default locations)
 
 ## Run Tests
 

@@ -62,13 +62,31 @@ def now_utc8():
 
 def load_cookies(config_path=None):
     cookies = os.environ.get("MINIMAX_COOKIES", "")
+    source = "MINIMAX_COOKIES env var"
+    
     if not cookies:
         config = load_config(config_path)
-        cookies = config.get("minimax_cookies", "")
+        if "minimax_cookies" in config:
+            cookies = config.get("minimax_cookies", "")
+            if config_path:
+                source = f"{config_path}"
+            else:
+                source = "config.yml or ~/.minimax_config.yml"
+        else:
+            if config_path:
+                if os.path.exists(config_path):
+                    print(f"❌ Config file {config_path} does not contain 'minimax_cookies' field")
+                else:
+                    print(f"❌ Config file not found: {config_path}")
+            else:
+                print("❌ No cookies found in MINIMAX_COOKIES env var or any config file")
+                print("   Set MINIMAX_COOKIES env var, or create config.yml with minimax_cookies")
+            sys.exit(1)
+    
     if not cookies:
-        print("❌ MINIMAX_COOKIES env var not set.")
-        print("   Set MINIMAX_COOKIES env var or create config.yml with minimax_cookies")
+        print(f"❌ Cookies value in {source} is empty")
         sys.exit(1)
+    
     return cookies
 
 def fetch_usage(config_path=None):
@@ -148,8 +166,8 @@ def main(config_path=None):
     data = fetch_usage(config_path)
     
     if data["base_resp"]["status_code"] == 1004:
-        print("❌ Cookies expired. Please update MINIMAX_COOKIES env var:")
-        print("   export MINIMAX_COOKIES='<your cookies>'")
+        print("❌ Cookies may be expired. Please update your cookies.")
+        print("   Check your config file or MINIMAX_COOKIES env var.")
         return
     
     print(f"📊 MiniMax Usage Report — {now.strftime('%Y-%m-%d %H:%M UTC+8')}\n")

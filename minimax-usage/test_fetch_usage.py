@@ -446,10 +446,16 @@ class TestTimezone:
             os.chdir(original_cwd)
 
     def test_init_timezone_default_is_local(self):
-        from fetch_usage import init_timezone, get_local_timezone
-        tz = init_timezone()
-        local_tz = get_local_timezone()
-        assert tz == local_tz
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(tempfile.mkdtemp())
+            
+            from fetch_usage import init_timezone, get_local_timezone
+            tz = init_timezone()
+            local_tz = get_local_timezone()
+            assert tz == local_tz
+        finally:
+            os.chdir(original_cwd)
 
 
 if __name__ == "__main__":
