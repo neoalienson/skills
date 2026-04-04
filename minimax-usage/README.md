@@ -89,6 +89,42 @@ stop when encounter any error
 keep the output format from the skill
 ```
 
+### Sample cronjob in json
+
+```json
+ jobs.json
+{
+  "version": 1,
+  "jobs": [
+    {
+      "agentId": "isadora",
+      "name": "MiniMax Usage",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 02,03,08,09,13,14,16,18,19,22,23 * * *",
+        "tz": "Asia/Hong_Kong"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Use the \"minimax-usage\" skill for this request\nThe config file locates at /skills/minimax-usage/config.yml\ndo not create new file\nstop when encounter any error\nkeep the output format from the skill",
+        "timeoutSeconds": 600,
+        "lightContext": true
+      },
+      "deleteAfterRun": false,
+      "sessionKey": "agent:isadora:main",
+      "delivery": {
+        "mode": "announce",
+        "channel": "telegram",
+        "bestEffort": false
+      }
+    }
+  ]
+}
+```
+
 ## Run Tests
 
 ```bash
