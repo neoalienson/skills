@@ -10,14 +10,16 @@ from urllib.error import URLError, HTTPError
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from fetch_usage import load_cookies, fetch_usage, format_time_remaining, time_bar, ascii_bar, main, get_timezone, load_config
+from fetch_usage import load_cookies, fetch_usage, format_time_remaining, time_bar, ascii_bar, main, get_timezone, load_config, get_local_timezone
 
 class TestLoadCookies:
     def test_load_cookies_from_env(self):
-        os.environ["MINIMAX_COOKIES"] = "test_cookie_from_env"
-        cookies = load_cookies()
-        assert cookies == "test_cookie_from_env"
-        del os.environ["MINIMAX_COOKIES"]
+        try:
+            os.environ["MINIMAX_COOKIES"] = "test_cookie_from_env"
+            cookies = load_cookies()
+            assert cookies == "test_cookie_from_env"
+        finally:
+            del os.environ["MINIMAX_COOKIES"]
 
     def test_load_cookies_from_config_yml(self):
         original_cwd = os.getcwd()
@@ -29,9 +31,9 @@ class TestLoadCookies:
             os.environ["MINIMAX_COOKIES"] = ""
             cookies = load_cookies()
             assert cookies == "test_cookie_from_yaml"
-            
-            del os.environ["MINIMAX_COOKIES"]
         finally:
+            if "MINIMAX_COOKIES" in os.environ:
+                del os.environ["MINIMAX_COOKIES"]
             os.chdir(original_cwd)
 
     def test_load_cookies_no_config(self):
@@ -59,12 +61,44 @@ class TestLoadCookies:
             os.environ["MINIMAX_COOKIES"] = ""
             cookies = load_cookies()
             assert cookies == "test_cookie_home"
-            
-            del os.environ["MINIMAX_COOKIES"]
         finally:
+            if "MINIMAX_COOKIES" in os.environ:
+                del os.environ["MINIMAX_COOKIES"]
             os.chdir(original_cwd)
             if os.path.exists(home_file):
                 os.unlink(home_file)
+
+    def test_load_cookies_from_specific_config_path(self):
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(tempfile.mkdtemp())
+            custom_config = os.path.join(os.getcwd(), "my_config.yml")
+            with open(custom_config, "w") as f:
+                f.write("minimax_cookies: cookie_from_specific_path\n")
+            
+            os.environ["MINIMAX_COOKIES"] = ""
+            cookies = load_cookies(custom_config)
+            assert cookies == "cookie_from_specific_path"
+        finally:
+            if "MINIMAX_COOKIES" in os.environ:
+                del os.environ["MINIMAX_COOKIES"]
+            os.chdir(original_cwd)
+
+    def test_env_var_takes_priority_over_config_path(self):
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(tempfile.mkdtemp())
+            custom_config = os.path.join(os.getcwd(), "my_config.yml")
+            with open(custom_config, "w") as f:
+                f.write("minimax_cookies: cookie_from_config\n")
+            
+            os.environ["MINIMAX_COOKIES"] = "cookie_from_env"
+            cookies = load_cookies(custom_config)
+            assert cookies == "cookie_from_env"
+        finally:
+            if "MINIMAX_COOKIES" in os.environ:
+                del os.environ["MINIMAX_COOKIES"]
+            os.chdir(original_cwd)
 
     def test_load_config_success(self):
         original_cwd = os.getcwd()
@@ -86,6 +120,40 @@ class TestLoadCookies:
             
             config = load_config()
             assert config == {}
+        finally:
+            os.chdir(original_cwd)
+
+    def test_load_config_from_specific_path(self):
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(tempfile.mkdtemp())
+            custom_config = os.path.join(os.getcwd(), "custom_config.yml")
+            with open(custom_config, "w") as f:
+                f.write("minimax_cookies: custom_cookie\ntimezone: Asia/Tokyo\n")
+            
+            config = load_config(custom_config)
+            assert config["minimax_cookies"] == "custom_cookie"
+            assert config["timezone"] == "Asia/Tokyo"
+        finally:
+            os.chdir(original_cwd)
+
+    def test_load_config_specific_path_not_found(self):
+        config = load_config("/nonexistent/path/config.yml")
+        assert config == {}
+
+    def test_load_config_specific_path_has_highest_priority(self):
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(tempfile.mkdtemp())
+            with open("config.yml", "w") as f:
+                f.write("minimax_cookies: default_cookie\n")
+            
+            custom_config = os.path.join(os.getcwd(), "custom_config.yml")
+            with open(custom_config, "w") as f:
+                f.write("minimax_cookies: custom_cookie\n")
+            
+            config = load_config(custom_config)
+            assert config["minimax_cookies"] == "custom_cookie"
         finally:
             os.chdir(original_cwd)
 
@@ -165,6 +233,19 @@ class TestFetchUsage:
         with pytest.raises(SystemExit) as exc_info:
             fetch_usage()
         assert exc_info.value.code == 1
+
+    @patch('fetch_usage.urllib.request.urlopen')
+    @patch('fetch_usage.load_cookies')
+    def test_fetch_usage_with_config_path(self, mock_load_cookies, mock_urlopen):
+        mock_load_cookies.return_value = "test_cookies"
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps({"data": "test"}).encode()
+        mock_urlopen.return_value.__enter__.return_value = mock_response
+        
+        result = fetch_usage("/custom/config/path.yml")
+        
+        assert result == {"data": "test"}
+        mock_load_cookies.assert_called_once_with("/custom/config/path.yml")
 
 
 class TestFormatTimeRemaining:
@@ -253,7 +334,7 @@ class TestMain:
         
         main()
         
-        mock_fetch.assert_called_once()
+        mock_fetch.assert_called_once_with(None)
 
     @patch('fetch_usage.datetime')
     @patch('fetch_usage.get_current_interval')
@@ -283,7 +364,7 @@ class TestMain:
         
         main()
         
-        mock_fetch.assert_called_once()
+        mock_fetch.assert_called_once_with(None)
 
     @patch('fetch_usage.fetch_usage')
     @patch('fetch_usage.load_cookies')
@@ -301,81 +382,74 @@ class TestMain:
         }
         
         main()
+        
+        mock_fetch.assert_called_once_with(None)
+
+
+class TestCommandLineArgs:
+    def test_main_accepts_config_arg(self):
+        with patch('fetch_usage.fetch_usage') as mock_fetch:
+            mock_fetch.return_value = {"base_resp": {"status_code": 1004}}
+            custom_path = "/path/to/config.yml"
+            main(custom_path)
+            mock_fetch.assert_called_once_with(custom_path)
+
+    def test_main_accepts_config_arg_none_by_default(self):
+        with patch('fetch_usage.fetch_usage') as mock_fetch:
+            mock_fetch.return_value = {"base_resp": {"status_code": 1004}}
+            main()
+            mock_fetch.assert_called_once_with(None)
 
 
 class TestTimezone:
     def test_get_timezone_from_env(self):
         with patch.dict(os.environ, {"MINIMAX_TIMEZONE": "America/New_York"}):
-            import importlib
-            import fetch_usage
-            importlib.reload(fetch_usage)
-            tz = fetch_usage.get_timezone()
+            tz = get_timezone()
             assert str(tz) == "America/New_York"
-            importlib.reload(fetch_usage)
 
     def test_get_timezone_invalid_fallback(self):
         with patch.dict(os.environ, {"MINIMAX_TIMEZONE": "Invalid/Timezone"}):
-            import importlib
-            import fetch_usage
-            importlib.reload(fetch_usage)
-            tz = fetch_usage.get_timezone()
-            assert tz == fetch_usage.get_local_timezone()
-            importlib.reload(fetch_usage)
+            tz = get_timezone()
+            assert tz == get_local_timezone()
 
     def test_get_timezone_explicit(self):
-        import importlib
-        import fetch_usage
-        importlib.reload(fetch_usage)
-        tz = fetch_usage.get_timezone("America/Los_Angeles")
+        tz = get_timezone("America/Los_Angeles")
         assert str(tz) == "America/Los_Angeles"
 
-    def test_init_timezone_from_config(self):
+    def test_init_timezone_from_config_path(self):
         original_cwd = os.getcwd()
         try:
             os.chdir(tempfile.mkdtemp())
-            with open("config.yml", "w") as f:
+            config_path = os.path.join(os.getcwd(), "test_config.yml")
+            with open(config_path, "w") as f:
                 f.write("timezone: America/Los_Angeles\n")
             
-            import importlib
-            import fetch_usage
-            importlib.reload(fetch_usage)
-            tz = fetch_usage.init_timezone()
+            from fetch_usage import init_timezone
+            tz = init_timezone(config_path)
             assert str(tz) == "America/Los_Angeles"
-            importlib.reload(fetch_usage)
         finally:
             os.chdir(original_cwd)
 
-    def test_init_timezone_env_overrides_config(self):
+    def test_init_timezone_env_overrides_config_path(self):
         original_cwd = os.getcwd()
         try:
             os.chdir(tempfile.mkdtemp())
-            with open("config.yml", "w") as f:
+            config_path = os.path.join(os.getcwd(), "test_config.yml")
+            with open(config_path, "w") as f:
                 f.write("timezone: America/Los_Angeles\n")
             
             with patch.dict(os.environ, {"MINIMAX_TIMEZONE": "Europe/London"}):
-                import importlib
-                import fetch_usage
-                importlib.reload(fetch_usage)
-                tz = fetch_usage.init_timezone()
+                from fetch_usage import init_timezone
+                tz = init_timezone(config_path)
                 assert str(tz) == "Europe/London"
-                importlib.reload(fetch_usage)
         finally:
             os.chdir(original_cwd)
 
     def test_init_timezone_default_is_local(self):
-        original_cwd = os.getcwd()
-        try:
-            os.chdir(tempfile.mkdtemp())
-            
-            import importlib
-            import fetch_usage
-            importlib.reload(fetch_usage)
-            tz = fetch_usage.init_timezone()
-            local_tz = fetch_usage.get_local_timezone()
-            assert tz == local_tz
-            importlib.reload(fetch_usage)
-        finally:
-            os.chdir(original_cwd)
+        from fetch_usage import init_timezone, get_local_timezone
+        tz = init_timezone()
+        local_tz = get_local_timezone()
+        assert tz == local_tz
 
 
 if __name__ == "__main__":

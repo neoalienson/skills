@@ -3,6 +3,7 @@
 Fetch MiniMax API usage and report with precise time calculations.
 """
 
+import argparse
 import json
 import os
 import sys
@@ -28,7 +29,13 @@ def get_timezone(tz_name=None):
         print(f"⚠️  Invalid timezone '{tz_name}', falling back to local timezone")
         return get_local_timezone()
 
-def load_config():
+def load_config(config_path=None):
+    if config_path:
+        if os.path.exists(config_path):
+            with open(config_path, "r") as f:
+                return yaml.safe_load(f) or {}
+        return {}
+    
     config_paths = [os.path.expanduser("~/.minimax_config.yml"), "config.yml"]
     for path in config_paths:
         if os.path.exists(path):
@@ -36,8 +43,8 @@ def load_config():
                 return yaml.safe_load(f) or {}
     return {}
 
-def init_timezone():
-    config = load_config()
+def init_timezone(config_path=None):
+    config = load_config(config_path)
     tz_name = os.environ.get("MINIMAX_TIMEZONE") or config.get("timezone")
     if tz_name is None:
         return get_local_timezone()
@@ -53,10 +60,10 @@ TZ = init_timezone()
 def now_utc8():
     return datetime.now(timezone.utc).astimezone(TZ)
 
-def load_cookies():
+def load_cookies(config_path=None):
     cookies = os.environ.get("MINIMAX_COOKIES", "")
     if not cookies:
-        config = load_config()
+        config = load_config(config_path)
         cookies = config.get("minimax_cookies", "")
     if not cookies:
         print("❌ MINIMAX_COOKIES env var not set.")
@@ -64,8 +71,8 @@ def load_cookies():
         sys.exit(1)
     return cookies
 
-def fetch_usage():
-    cookies = load_cookies()
+def fetch_usage(config_path=None):
+    cookies = load_cookies(config_path)
     
     req = urllib.request.Request(
         "https://www.minimaxi.com/v1/api/openplatform/coding_plan/remains?GroupId=2034608336271319731",
@@ -136,9 +143,9 @@ def ascii_bar(used, total, block="█", width=20, label=""):
     label_str = f"{label} " if label else ""
     return f"{bar} {label_str}{pct:.0f}% ({used}/{total})"
 
-def main():
+def main(config_path=None):
     now = now_utc8()
-    data = fetch_usage()
+    data = fetch_usage(config_path)
     
     if data["base_resp"]["status_code"] == 1004:
         print("❌ Cookies expired. Please update MINIMAX_COOKIES env var:")
@@ -191,4 +198,7 @@ def main():
         print()
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Fetch MiniMax API usage and report")
+    parser.add_argument("-c", "--config", dest="config_path", help="Path to config file")
+    args = parser.parse_args()
+    main(args.config_path)
