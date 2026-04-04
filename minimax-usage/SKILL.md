@@ -12,12 +12,11 @@ Check your MiniMax API usage by calling the MiniMax platform API endpoint. Uses 
 ## Files
 
 - `fetch_usage.py` — Main script that fetches and reports usage
-- `time_calc.py` — Time calculation module with full unit tests
-- `test_time_calc.py` — 35 unit tests covering edge cases
 
 ## Usage
 
 ```bash
+cd `location of fetch_usage.py`
 python3 fetch_usage.py
 ```
 
