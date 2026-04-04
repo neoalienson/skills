@@ -198,6 +198,17 @@ class TestTimeBar:
         result = time_bar(1, 0)
         assert "(N/A)" in result
 
+    def test_time_bar_with_label(self):
+        result = time_bar(2.5, 5, label="Time:")
+        assert "50%" in result
+        assert "Time: " in result
+        assert result.endswith("⏱️")
+
+    def test_time_bar_zero_total_with_label(self):
+        result = time_bar(1, 0, label="Time:")
+        assert "(N/A)" in result
+        assert "Time:" in result
+
 
 class TestAsciiBar:
     def test_ascii_bar_full(self):
@@ -218,6 +229,17 @@ class TestAsciiBar:
     def test_ascii_bar_zero_total(self):
         result = ascii_bar(50, 0)
         assert "(N/A)" in result
+
+    def test_ascii_bar_with_label(self):
+        result = ascii_bar(50, 100, label="Quota:")
+        assert "50%" in result
+        assert "(50/100)" in result
+        assert "Quota: " in result
+
+    def test_ascii_bar_zero_total_with_label(self):
+        result = ascii_bar(50, 0, label="Quota:")
+        assert "(N/A)" in result
+        assert "Quota:" in result
 
 
 class TestMain:

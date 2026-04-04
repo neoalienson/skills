@@ -109,30 +109,32 @@ def format_time_remaining(hours, minutes, seconds):
     else:
         return f"{seconds}s"
 
-def time_bar(elapsed_hours, total_hours, block="█", width=20):
-    """Draw bar for time elapsed. e.g. ████████████████░░░ 91% (25m)"""
+def time_bar(elapsed_hours, total_hours, block="█", width=20, label="", emoji="⏱️"):
+    """Draw bar for time elapsed. e.g. ███████░░░░░░░░░░░░░ Time: 36% (3h 10m) ⏱️"""
     if total_hours <= 0:
-        return block * width + " (N/A)"
+        return block * width + " (N/A)" + (f" {label}" if label else "")
     filled = round((elapsed_hours / total_hours) * width)
     empty = width - filled
     pct = int((elapsed_hours / total_hours) * 100)
-    # remaining time
     remaining_mins = int((total_hours - elapsed_hours) * 60)
     if remaining_mins >= 60:
         remaining = f"{remaining_mins // 60}h {remaining_mins % 60}m"
     else:
         remaining = f"{remaining_mins}m"
-    return block * filled + "░" * empty + f" {pct}% ({remaining})"
+    label_str = f"{label} " if label else ""
+    emoji_str = f" {emoji}" if emoji else ""
+    return block * filled + "░" * empty + f" {label_str}{pct}% ({remaining}){emoji_str}"
 
-def ascii_bar(used, total, block="█", width=20):
+def ascii_bar(used, total, block="█", width=20, label=""):
     """Draw a horizontal ASCII bar chart. Each block = 5% (20 blocks for 100%)."""
     if total == 0:
-        return block * width + " " + "(N/A)"
+        return block * width + " " + "(N/A)" + (f" {label}" if label else "")
     filled = round((used / total) * width)
     empty = width - filled
     bar = block * filled + "░" * empty
     pct = (used / total) * 100
-    return f"{bar} {pct:.0f}% ({used}/{total})"
+    label_str = f"{label} " if label else ""
+    return f"{bar} {label_str}{pct:.0f}% ({used}/{total})"
 
 def main():
     now = now_utc8()
@@ -180,8 +182,8 @@ def main():
         usage_pct = (remaining / total) * 100 if total > 0 else 0
         
         print(f"**{model['model_name']}**")
-        print(f"  Quota:  {ascii_bar(used, total)}")
-        print(f"  ⏱️  Time: {time_bar(hours_elapsed, total_interval_hours)}")
+        print(f"  {ascii_bar(used, total, label='Quota:')}")
+        print(f"  {time_bar(hours_elapsed, total_interval_hours, label='Time:')}")
         print(f"  Next reset: {next_reset.strftime('%H:%M UTC+8')}")
         
         if usage_pct < 10:
