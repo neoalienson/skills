@@ -4,13 +4,17 @@ import sys
 import tempfile
 import json
 import pytest
-from unittest.mock import patch, MagicMock, mock_open
+from unittest.mock import patch, MagicMock
 from datetime import datetime, timezone, timedelta
 from urllib.error import URLError, HTTPError
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from fetch_usage import load_cookies, fetch_usage, format_time_remaining, time_bar, ascii_bar, main, get_timezone, load_config, get_local_timezone
+from fetch_usage import (
+    load_cookies, fetch_usage, format_time_remaining, time_bar, ascii_bar,
+    main, get_timezone, load_config, get_local_timezone,
+    CookiesNotFoundError, NetworkError, HTTPError as FetchHTTPError, InvalidResponseError
+)
 
 class TestLoadCookies:
     def test_load_cookies_from_env(self):
@@ -37,18 +41,30 @@ class TestLoadCookies:
             os.chdir(original_cwd)
 
     def test_load_cookies_no_config(self):
-        original_cwd = os.getcwd()
-        try:
-            os.chdir(tempfile.mkdtemp())
-            
-            if "MINIMAX_COOKIES" in os.environ:
-                del os.environ["MINIMAX_COOKIES"]
-            
-            with pytest.raises(SystemExit) as exc_info:
+        with patch('fetch_usage.load_config', return_value={}):
+            with patch.dict(os.environ, {}, clear=True):
+                with pytest.raises(CookiesNotFoundError) as exc_info:
+                    load_cookies()
+                assert "No cookies found" in str(exc_info.value)
+
+    def test_load_cookies_config_file_not_found(self):
+        with patch('fetch_usage.load_config', return_value={}):
+            with pytest.raises(CookiesNotFoundError) as exc_info:
+                load_cookies("/nonexistent/config.yml")
+            assert "Config file not found" in str(exc_info.value)
+
+    def test_load_cookies_config_missing_field(self):
+        with patch('fetch_usage.load_config', return_value={"timezone": "UTC"}):
+            with patch('os.path.exists', return_value=True):
+                with pytest.raises(CookiesNotFoundError) as exc_info:
+                    load_cookies("/path/to/config.yml")
+                assert "does not contain 'minimax_cookies' field" in str(exc_info.value)
+
+    def test_load_cookies_empty_value(self):
+        with patch('fetch_usage.load_config', return_value={"minimax_cookies": ""}):
+            with pytest.raises(CookiesNotFoundError) as exc_info:
                 load_cookies()
-            assert exc_info.value.code == 1
-        finally:
-            os.chdir(original_cwd)
+            assert "is empty" in str(exc_info.value)
 
     def test_load_cookies_from_home_config(self):
         original_cwd = os.getcwd()
@@ -198,9 +214,8 @@ class TestFetchUsage:
         mock_response.read.return_value = b""
         mock_urlopen.return_value.__enter__.return_value = mock_response
         
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(InvalidResponseError):
             fetch_usage()
-        assert exc_info.value.code == 1
 
     @patch('fetch_usage.urllib.request.urlopen')
     @patch('fetch_usage.load_cookies')
@@ -210,9 +225,8 @@ class TestFetchUsage:
         mock_response.read.return_value = b"not valid json"
         mock_urlopen.return_value.__enter__.return_value = mock_response
         
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(InvalidResponseError):
             fetch_usage()
-        assert exc_info.value.code == 1
 
     @patch('fetch_usage.urllib.request.urlopen')
     @patch('fetch_usage.load_cookies')
@@ -220,9 +234,8 @@ class TestFetchUsage:
         mock_load_cookies.return_value = "test_cookies"
         mock_urlopen.side_effect = URLError("Connection refused")
         
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(NetworkError):
             fetch_usage()
-        assert exc_info.value.code == 1
 
     @patch('fetch_usage.urllib.request.urlopen')
     @patch('fetch_usage.load_cookies')
@@ -230,9 +243,8 @@ class TestFetchUsage:
         mock_load_cookies.return_value = "test_cookies"
         mock_urlopen.side_effect = HTTPError(url="", code=401, msg="Unauthorized", hdrs={}, fp=None)
         
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(FetchHTTPError):
             fetch_usage()
-        assert exc_info.value.code == 1
 
     @patch('fetch_usage.urllib.request.urlopen')
     @patch('fetch_usage.load_cookies')
@@ -402,6 +414,12 @@ class TestCommandLineArgs:
 
 
 class TestTimezone:
+    def setup_method(self):
+        get_timezone.cache_clear()
+
+    def teardown_method(self):
+        get_timezone.cache_clear()
+
     def test_get_timezone_from_env(self):
         with patch.dict(os.environ, {"MINIMAX_TIMEZONE": "America/New_York"}):
             tz = get_timezone()
@@ -416,7 +434,7 @@ class TestTimezone:
         tz = get_timezone("America/Los_Angeles")
         assert str(tz) == "America/Los_Angeles"
 
-    def test_init_timezone_from_config_path(self):
+    def test_get_timezone_from_config_path(self):
         original_cwd = os.getcwd()
         try:
             os.chdir(tempfile.mkdtemp())
@@ -424,38 +442,22 @@ class TestTimezone:
             with open(config_path, "w") as f:
                 f.write("timezone: America/Los_Angeles\n")
             
-            from fetch_usage import init_timezone
-            tz = init_timezone(config_path)
+            config = load_config(config_path)
+            tz_name = config.get("timezone")
+            tz = get_timezone(tz_name)
             assert str(tz) == "America/Los_Angeles"
         finally:
             os.chdir(original_cwd)
 
-    def test_init_timezone_env_overrides_config_path(self):
-        original_cwd = os.getcwd()
-        try:
-            os.chdir(tempfile.mkdtemp())
-            config_path = os.path.join(os.getcwd(), "test_config.yml")
-            with open(config_path, "w") as f:
-                f.write("timezone: America/Los_Angeles\n")
-            
-            with patch.dict(os.environ, {"MINIMAX_TIMEZONE": "Europe/London"}):
-                from fetch_usage import init_timezone
-                tz = init_timezone(config_path)
-                assert str(tz) == "Europe/London"
-        finally:
-            os.chdir(original_cwd)
+    def test_get_timezone_env_overrides_config(self):
+        with patch.dict(os.environ, {"MINIMAX_TIMEZONE": "Europe/London"}):
+            tz = get_timezone()
+            assert str(tz) == "Europe/London"
 
-    def test_init_timezone_default_is_local(self):
-        original_cwd = os.getcwd()
-        try:
-            os.chdir(tempfile.mkdtemp())
-            
-            from fetch_usage import init_timezone, get_local_timezone
-            tz = init_timezone()
-            local_tz = get_local_timezone()
-            assert tz == local_tz
-        finally:
-            os.chdir(original_cwd)
+    def test_get_timezone_default_is_local(self):
+        tz = get_timezone()
+        local_tz = get_local_timezone()
+        assert tz == local_tz
 
 
 if __name__ == "__main__":

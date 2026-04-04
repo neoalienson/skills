@@ -4,30 +4,57 @@ Fetch MiniMax API usage and report with precise time calculations.
 """
 
 import argparse
+import functools
 import json
 import os
 import sys
 import urllib.request
+import zoneinfo
 import yaml
-from datetime import datetime, timezone, timedelta
-from time_calc import get_current_interval, get_next_reset_time, get_time_until_reset, get_elapsed_in_interval
+from datetime import datetime, timezone
+from time_calc import get_current_interval, get_next_reset_time, get_time_until_reset
+
+STATUS_SUCCESS = 0
+STATUS_COOKIES_EXPIRED = 1004
+
+
+class CookiesNotFoundError(Exception):
+    pass
+
+
+class CookiesExpiredError(Exception):
+    pass
+
+
+class NetworkError(Exception):
+    pass
+
+
+class HTTPError(Exception):
+    pass
+
+
+class InvalidResponseError(Exception):
+    pass
+
 
 def get_local_timezone():
-    import zoneinfo
     return datetime.now().astimezone().tzinfo
 
+
+@functools.lru_cache(maxsize=1)
 def get_timezone(tz_name=None):
     if tz_name is None:
         tz_name = os.environ.get("MINIMAX_TIMEZONE")
         if tz_name is None:
             return get_local_timezone()
     
-    import zoneinfo
     try:
         return zoneinfo.ZoneInfo(tz_name)
     except KeyError:
         print(f"⚠️  Invalid timezone '{tz_name}', falling back to local timezone")
         return get_local_timezone()
+
 
 def load_config(config_path=None):
     if config_path:
@@ -43,22 +70,9 @@ def load_config(config_path=None):
                 return yaml.safe_load(f) or {}
     return {}
 
-def init_timezone(config_path=None):
-    config = load_config(config_path)
-    tz_name = os.environ.get("MINIMAX_TIMEZONE") or config.get("timezone")
-    if tz_name is None:
-        return get_local_timezone()
-    import zoneinfo
-    try:
-        return zoneinfo.ZoneInfo(tz_name)
-    except KeyError:
-        print(f"⚠️  Invalid timezone '{tz_name}', falling back to local timezone")
-        return get_local_timezone()
-
-TZ = init_timezone()
-
 def now_utc8():
-    return datetime.now(timezone.utc).astimezone(TZ)
+    return datetime.now(timezone.utc).astimezone(get_timezone())
+
 
 def load_cookies(config_path=None):
     cookies = os.environ.get("MINIMAX_COOKIES", "")
@@ -75,17 +89,17 @@ def load_cookies(config_path=None):
         else:
             if config_path:
                 if os.path.exists(config_path):
-                    print(f"❌ Config file {config_path} does not contain 'minimax_cookies' field")
+                    raise CookiesNotFoundError(f"Config file {config_path} does not contain 'minimax_cookies' field")
                 else:
-                    print(f"❌ Config file not found: {config_path}")
+                    raise CookiesNotFoundError(f"Config file not found: {config_path}")
             else:
-                print("❌ No cookies found in MINIMAX_COOKIES env var or any config file")
-                print("   Set MINIMAX_COOKIES env var, or create config.yml with minimax_cookies")
-            sys.exit(1)
+                raise CookiesNotFoundError(
+                    "No cookies found in MINIMAX_COOKIES env var or any config file. "
+                    "Set MINIMAX_COOKIES env var, or create config.yml with minimax_cookies"
+                )
     
     if not cookies:
-        print(f"❌ Cookies value in {source} is empty")
-        sys.exit(1)
+        raise CookiesNotFoundError(f"Cookies value in {source} is empty")
     
     return cookies
 
@@ -105,26 +119,18 @@ def fetch_usage(config_path=None):
     try:
         with urllib.request.urlopen(req, timeout=30) as response:
             result = response.read().decode("utf-8")
-    except urllib.error.URLError as e:
-        print(f"❌ Network error: {e.reason}")
-        print("   Please check your internet connection.")
-        sys.exit(1)
     except urllib.error.HTTPError as e:
-        print(f"❌ HTTP error: {e.code}")
-        print("   Cookies may be expired. Please update MINIMAX_COOKIES env var.")
-        sys.exit(1)
+        raise HTTPError(f"HTTP error {e.code}. Cookies may be expired.")
+    except urllib.error.URLError as e:
+        raise NetworkError(f"Network error: {e.reason}. Please check your internet connection.")
     
     if not result.strip():
-        print("❌ Failed to fetch usage data. Cookies may be expired.")
-        print("   Please update MINIMAX_COOKIES env var.")
-        sys.exit(1)
+        raise InvalidResponseError("Failed to fetch usage data. Cookies may be expired.")
     
     try:
         return json.loads(result)
     except json.JSONDecodeError:
-        print("❌ Invalid response from API. Cookies may be expired.")
-        print("   Please update MINIMAX_COOKIES env var.")
-        sys.exit(1)
+        raise InvalidResponseError("Invalid response from API. Cookies may be expired.")
 
 def format_time_remaining(hours, minutes, seconds):
     if hours > 0:
@@ -162,10 +168,17 @@ def ascii_bar(used, total, block="█", width=20, label=""):
     return f"{bar} {label_str}{pct:.0f}% ({used}/{total})"
 
 def main(config_path=None):
-    now = now_utc8()
-    data = fetch_usage(config_path)
+    try:
+        now = now_utc8()
+        data = fetch_usage(config_path)
+    except CookiesNotFoundError as e:
+        print(f"❌ {e}")
+        sys.exit(1)
+    except (NetworkError, HTTPError, InvalidResponseError) as e:
+        print(f"❌ {e}")
+        sys.exit(1)
     
-    if data["base_resp"]["status_code"] == 1004:
+    if data["base_resp"]["status_code"] == STATUS_COOKIES_EXPIRED:
         print("❌ Cookies may be expired. Please update your cookies.")
         print("   Check your config file or MINIMAX_COOKIES env var.")
         return
@@ -183,26 +196,16 @@ def main(config_path=None):
         if total == 0:
             continue
         
-        # Time calculations
         interval_start, interval_end = get_current_interval(now)
         next_reset = get_next_reset_time(now)
         hours, minutes, seconds = get_time_until_reset(now)
-        time_str = format_time_remaining(hours, minutes, seconds)
         
-        # Calculate interval total hours (handles 20:00→00:00 = 4h edge case)
         if interval_end.day != interval_start.day:
             total_interval_hours = 24 - interval_start.hour + interval_end.hour
         else:
             total_interval_hours = interval_end.hour - interval_start.hour
         
-        # Hours elapsed as float (total - remaining time)
         hours_elapsed = total_interval_hours - (hours + minutes / 60 + seconds / 3600)
-        
-        # Format interval string
-        if interval_end.day != interval_start.day:
-            interval_str = f"{interval_start.hour:02d}:00 – {interval_end.hour:02d}:00+1day UTC+8"
-        else:
-            interval_str = f"{interval_start.hour:02d}:00 – {interval_end.hour:02d}:00 UTC+8"
         
         usage_pct = (remaining / total) * 100 if total > 0 else 0
         
