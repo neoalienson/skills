@@ -16,8 +16,7 @@ Check your MiniMax API usage by calling the MiniMax platform API endpoint. Uses 
 ## Usage
 
 ```bash
-cd `location of fetch_usage.py`
-python3 fetch_usage.py
+python3 fetch_usage.py -c `path to run config.yml`
 ```
 
 ## Output Format
@@ -60,3 +59,4 @@ Resets at **00:00, 05:00, 10:00, 15:00, 20:00** (UTC+8) — every 5 hours.
 - Used = total − remaining
 
 If the API returns `{"base_resp":{"status_code":1004,"status_msg":"cookie is missing, log in again"}}`, the cookies have expired — refresh them in your browser and update the env var.
+
