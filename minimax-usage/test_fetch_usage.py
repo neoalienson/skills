@@ -54,17 +54,32 @@ class TestLoadCookies:
             assert "Config file not found" in str(exc_info.value)
 
     def test_load_cookies_config_missing_field(self):
-        with patch('fetch_usage.load_config', return_value={"timezone": "UTC"}):
-            with patch('os.path.exists', return_value=True):
-                with pytest.raises(CookiesNotFoundError) as exc_info:
-                    load_cookies("/path/to/config.yml")
-                assert "does not contain 'minimax_cookies' field" in str(exc_info.value)
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(tempfile.mkdtemp())
+            config_path = os.path.join(os.getcwd(), "my_config.yml")
+            with open(config_path, "w") as f:
+                f.write("timezone: UTC\n")
+            
+            with pytest.raises(CookiesNotFoundError) as exc_info:
+                load_cookies(config_path)
+            assert "does not contain 'minimax_cookies' field" in str(exc_info.value)
+        finally:
+            os.chdir(original_cwd)
 
     def test_load_cookies_empty_value(self):
-        with patch('fetch_usage.load_config', return_value={"minimax_cookies": ""}):
-            with pytest.raises(CookiesNotFoundError) as exc_info:
-                load_cookies()
-            assert "is empty" in str(exc_info.value)
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(tempfile.mkdtemp())
+            with open("config.yml", "w") as f:
+                f.write("minimax_cookies: \"\"\n")
+            
+            with patch.dict(os.environ, {}, clear=True):
+                with pytest.raises(CookiesNotFoundError) as exc_info:
+                    load_cookies()
+            assert "No cookies found" in str(exc_info.value)
+        finally:
+            os.chdir(original_cwd)
 
     def test_load_cookies_from_home_config(self):
         original_cwd = os.getcwd()
@@ -100,7 +115,7 @@ class TestLoadCookies:
                 del os.environ["MINIMAX_COOKIES"]
             os.chdir(original_cwd)
 
-    def test_env_var_takes_priority_over_config_path(self):
+    def test_c_config_overrides_env_var(self):
         original_cwd = os.getcwd()
         try:
             os.chdir(tempfile.mkdtemp())
@@ -110,7 +125,7 @@ class TestLoadCookies:
             
             os.environ["MINIMAX_COOKIES"] = "cookie_from_env"
             cookies = load_cookies(custom_config)
-            assert cookies == "cookie_from_env"
+            assert cookies == "cookie_from_config"
         finally:
             if "MINIMAX_COOKIES" in os.environ:
                 del os.environ["MINIMAX_COOKIES"]
@@ -257,7 +272,7 @@ class TestFetchUsage:
         result = fetch_usage("/custom/config/path.yml")
         
         assert result == {"data": "test"}
-        mock_load_cookies.assert_called_once_with("/custom/config/path.yml")
+        mock_load_cookies.assert_called_once_with("/custom/config/path.yml", debug=False)
 
 
 class TestFormatTimeRemaining:
@@ -346,7 +361,7 @@ class TestMain:
         
         main()
         
-        mock_fetch.assert_called_once_with(None)
+        mock_fetch.assert_called_once_with(None, debug=False)
 
     @patch('fetch_usage.datetime')
     @patch('fetch_usage.get_current_interval')
@@ -376,7 +391,7 @@ class TestMain:
         
         main()
         
-        mock_fetch.assert_called_once_with(None)
+        mock_fetch.assert_called_once_with(None, debug=False)
 
     @patch('fetch_usage.fetch_usage')
     @patch('fetch_usage.load_cookies')
@@ -394,8 +409,7 @@ class TestMain:
         }
         
         main()
-        
-        mock_fetch.assert_called_once_with(None)
+        mock_fetch.assert_called_once_with(None, debug=False)
 
 
 class TestCommandLineArgs:
@@ -404,13 +418,13 @@ class TestCommandLineArgs:
             mock_fetch.return_value = {"base_resp": {"status_code": 1004}}
             custom_path = "/path/to/config.yml"
             main(custom_path)
-            mock_fetch.assert_called_once_with(custom_path)
+            mock_fetch.assert_called_once_with(custom_path, debug=False)
 
     def test_main_accepts_config_arg_none_by_default(self):
         with patch('fetch_usage.fetch_usage') as mock_fetch:
             mock_fetch.return_value = {"base_resp": {"status_code": 1004}}
             main()
-            mock_fetch.assert_called_once_with(None)
+            mock_fetch.assert_called_once_with(None, debug=False)
 
 
 class TestTimezone:
@@ -449,7 +463,7 @@ class TestTimezone:
         finally:
             os.chdir(original_cwd)
 
-    def test_get_timezone_env_overrides_config(self):
+    def test_get_timezone_env_var_used_when_no_c_config(self):
         with patch.dict(os.environ, {"MINIMAX_TIMEZONE": "Europe/London"}):
             tz = get_timezone()
             assert str(tz) == "Europe/London"
@@ -458,6 +472,43 @@ class TestTimezone:
         tz = get_timezone()
         local_tz = get_local_timezone()
         assert tz == local_tz
+
+    def test_get_timezone_reads_from_c_config_when_env_not_set(self):
+        """When config_path provided and MINIMAX_TIMEZONE env var absent, timezone should come from -c config"""
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(tempfile.mkdtemp())
+            config_path = os.path.join(os.getcwd(), "test_config.yml")
+            with open(config_path, "w") as f:
+                f.write("timezone: Asia/Shanghai\n")
+            
+            with patch.dict(os.environ, {}, clear=True):
+                tz = get_timezone(config_path=config_path)
+                assert str(tz) == "Asia/Shanghai"
+        finally:
+            os.chdir(original_cwd)
+
+    def test_get_timezone_c_config_overrides_env_var(self):
+        """When config_path provided, env var should be ignored"""
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(tempfile.mkdtemp())
+            config_path = os.path.join(os.getcwd(), "test_config.yml")
+            with open(config_path, "w") as f:
+                f.write("timezone: Asia/Shanghai\n")
+            
+            with patch.dict(os.environ, {"MINIMAX_TIMEZONE": "Europe/London"}):
+                tz = get_timezone(config_path=config_path)
+                assert str(tz) == "Asia/Shanghai"
+        finally:
+            os.chdir(original_cwd)
+
+    def test_get_timezone_local_used_when_no_env_no_c_config(self):
+        """When no config_path and no env var, local timezone should be used"""
+        with patch.dict(os.environ, {}, clear=True):
+            tz = get_timezone()
+            local_tz = get_local_timezone()
+            assert tz == local_tz
 
 
 if __name__ == "__main__":

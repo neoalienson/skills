@@ -43,11 +43,25 @@ def get_local_timezone():
 
 
 @functools.lru_cache(maxsize=1)
-def get_timezone(tz_name=None):
+def get_timezone(tz_name=None, config_path=None, debug=False):
     if tz_name is None:
-        tz_name = os.environ.get("MINIMAX_TIMEZONE")
-        if tz_name is None:
-            return get_local_timezone()
+        if config_path:
+            if debug:
+                print(f"[DEBUG] Loading timezone from config: {config_path}")
+            config = load_config(config_path)
+            tz_name = config.get("timezone")
+            if debug:
+                print(f"[DEBUG]   Found timezone in config: {tz_name}")
+        else:
+            tz_name = os.environ.get("MINIMAX_TIMEZONE")
+            if debug:
+                print(f"[DEBUG] Checking MINIMAX_TIMEZONE env var: {tz_name}")
+    
+    if tz_name is None:
+        local_tz = get_local_timezone()
+        if debug:
+            print(f"[DEBUG] No timezone found, using local: {local_tz}")
+        return local_tz
     
     try:
         return zoneinfo.ZoneInfo(tz_name)
@@ -70,41 +84,45 @@ def load_config(config_path=None):
                 return yaml.safe_load(f) or {}
     return {}
 
-def now_utc8():
-    return datetime.now(timezone.utc).astimezone(get_timezone())
+def now_utc8(config_path=None, debug=False):
+    return datetime.now(timezone.utc).astimezone(get_timezone(config_path=config_path, debug=debug))
 
 
-def load_cookies(config_path=None):
+def load_cookies(config_path=None, debug=False):
+    if config_path:
+        if debug:
+            print(f"[DEBUG] Loading cookies from config: {config_path}")
+        if not os.path.exists(config_path):
+            raise CookiesNotFoundError(f"Config file not found: {config_path}")
+        with open(config_path, "r") as f:
+            config = yaml.safe_load(f) or {}
+        if "minimax_cookies" in config and config["minimax_cookies"]:
+            if debug:
+                print(f"[DEBUG]   Found cookies in config")
+            return config["minimax_cookies"]
+        raise CookiesNotFoundError(f"Config file {config_path} does not contain 'minimax_cookies' field")
+    
     cookies = os.environ.get("MINIMAX_COOKIES", "")
-    source = "MINIMAX_COOKIES env var"
+    if cookies:
+        if debug:
+            print(f"[DEBUG] Found cookies in MINIMAX_COOKIES env var")
+        return cookies
+    if debug:
+        print(f"[DEBUG] No cookies in MINIMAX_COOKIES env var")
     
-    if not cookies:
-        config = load_config(config_path)
-        if "minimax_cookies" in config:
-            cookies = config.get("minimax_cookies", "")
-            if config_path:
-                source = f"{config_path}"
-            else:
-                source = "config.yml or ~/.minimax_config.yml"
-        else:
-            if config_path:
-                if os.path.exists(config_path):
-                    raise CookiesNotFoundError(f"Config file {config_path} does not contain 'minimax_cookies' field")
-                else:
-                    raise CookiesNotFoundError(f"Config file not found: {config_path}")
-            else:
-                raise CookiesNotFoundError(
-                    "No cookies found in MINIMAX_COOKIES env var or any config file. "
-                    "Set MINIMAX_COOKIES env var, or create config.yml with minimax_cookies"
-                )
+    config = load_config(config_path)
+    if "minimax_cookies" in config and config["minimax_cookies"]:
+        if debug:
+            print(f"[DEBUG] Found cookies in default config file")
+        return config["minimax_cookies"]
     
-    if not cookies:
-        raise CookiesNotFoundError(f"Cookies value in {source} is empty")
-    
-    return cookies
+    raise CookiesNotFoundError(
+        "No cookies found in MINIMAX_COOKIES env var or any config file. "
+        "Set MINIMAX_COOKIES env var, or create config.yml with minimax_cookies"
+    )
 
-def fetch_usage(config_path=None):
-    cookies = load_cookies(config_path)
+def fetch_usage(config_path=None, debug=False):
+    cookies = load_cookies(config_path, debug=debug)
     
     req = urllib.request.Request(
         "https://www.minimaxi.com/v1/api/openplatform/coding_plan/remains?GroupId=2034608336271319731",
@@ -167,10 +185,14 @@ def ascii_bar(used, total, block="█", width=20, label=""):
     label_str = f"{label} " if label else ""
     return f"{bar} {label_str}{pct:.0f}% ({used}/{total})"
 
-def main(config_path=None):
+def main(config_path=None, debug=False):
     try:
-        now = now_utc8()
-        data = fetch_usage(config_path)
+        if debug:
+            print("[DEBUG] Loading timezone...")
+        now = now_utc8(config_path, debug=debug)
+        if debug:
+            print("[DEBUG] Fetching usage data...")
+        data = fetch_usage(config_path, debug=debug)
     except CookiesNotFoundError as e:
         print(f"❌ {e}")
         sys.exit(1)
@@ -221,5 +243,6 @@ def main(config_path=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Fetch MiniMax API usage and report")
     parser.add_argument("-c", "--config", dest="config_path", help="Path to config file")
+    parser.add_argument("-d", "--debug", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
-    main(args.config_path)
+    main(args.config_path, debug=args.debug)
