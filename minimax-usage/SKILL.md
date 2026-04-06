@@ -27,7 +27,7 @@ The script outputs a **horizontal bar chart** for each model, e.g.:
 📊 MiniMax Usage Report — 2026-03-27 08:30 UTC+8
 
 **MiniMax-M***
-  ███████████████░░░░░ Quota: 73% (440/600) 
+  ███████████████░░░░░ Usage: 73% (440/600) 
   ███████░░░░░░░░░░░░░ Time:  36% (3h 10m) ⏱️
   Next reset: 15:00 UTC+8
 ```

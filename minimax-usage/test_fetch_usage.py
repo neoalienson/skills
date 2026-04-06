@@ -342,7 +342,7 @@ class TestAsciiBar:
         result = ascii_bar(50, 100, label="Quota:")
         assert "50%" in result
         assert "(50/100)" in result
-        assert "Quota: " in result
+        assert "Usage: " in result
 
     def test_ascii_bar_zero_total_with_label(self):
         result = ascii_bar(50, 0, label="Quota:")

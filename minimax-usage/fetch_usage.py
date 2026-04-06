@@ -232,12 +232,12 @@ def main(config_path=None, debug=False):
         usage_pct = (remaining / total) * 100 if total > 0 else 0
         
         print(f"**{model['model_name']}**")
-        print(f"  {ascii_bar(used, total, label='Quota:')}")
+        print(f"  {ascii_bar(used, total, label='Usage:')}")
         print(f"  {time_bar(hours_elapsed, total_interval_hours, label='Time:')}")
         print(f"  Next reset: {next_reset.strftime('%H:%M UTC+8')}")
         
         if usage_pct < 10:
-            print(f"  ⚠️  Warning: Quota nearly exhausted ({usage_pct:.0f}%)")
+            print(f"  ⚠️  Warning: Usage nearly exhausted ({usage_pct:.0f}%)")
         print()
 
 if __name__ == "__main__":
