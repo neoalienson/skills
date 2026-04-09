@@ -64,7 +64,7 @@ jobs:
         python-version: '3.x'
 
     - name: Install dependencies
-      run: pip install pytest pyyaml pyfakefs
+      run: pip install pytest pyyaml pyfakefs pydantic supabase
 
     - name: Run minimax-usage unit tests
       run: |
