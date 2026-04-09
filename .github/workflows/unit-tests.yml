@@ -70,3 +70,8 @@ jobs:
       run: |
         cd minimax-usage
         python -m pytest
+
+    - name: Run todo-list unit tests
+      run: |
+        cd todo-list
+        python -m pytest
