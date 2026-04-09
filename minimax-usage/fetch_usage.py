@@ -9,6 +9,7 @@ import json
 import os
 import sys
 import urllib.request
+import urllib.error
 import zoneinfo
 import yaml
 from datetime import datetime, timezone
@@ -36,6 +37,11 @@ class HTTPError(Exception):
 
 class InvalidResponseError(Exception):
     pass
+
+
+class NoRedirectsHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise urllib.error.HTTPError(req.full_url, code, "HTTP redirect not followed", headers, None)
 
 
 def get_local_timezone():
@@ -73,15 +79,21 @@ def get_timezone(tz_name=None, config_path=None, debug=False):
 def load_config(config_path=None):
     if config_path:
         if os.path.exists(config_path):
-            with open(config_path, "r") as f:
-                return yaml.safe_load(f) or {}
+            try:
+                with open(config_path, "r") as f:
+                    return yaml.safe_load(f) or {}
+            except yaml.YAMLError:
+                return {}
         return {}
     
     config_paths = [os.path.expanduser("~/.minimax_config.yml"), "config.yml"]
     for path in config_paths:
         if os.path.exists(path):
-            with open(path, "r") as f:
-                return yaml.safe_load(f) or {}
+            try:
+                with open(path, "r") as f:
+                    return yaml.safe_load(f) or {}
+            except yaml.YAMLError:
+                return {}
     return {}
 
 def now_utc8(config_path=None, debug=False):
@@ -134,8 +146,10 @@ def fetch_usage(config_path=None, debug=False):
         }
     )
     
+    no_redirect_opener = urllib.request.build_opener(NoRedirectsHandler)
+    
     try:
-        with urllib.request.urlopen(req, timeout=30) as response:
+        with no_redirect_opener.open(req, timeout=30) as response:
             result = response.read().decode("utf-8")
     except urllib.error.HTTPError as e:
         raise HTTPError(f"HTTP error {e.code}. Cookies may be expired.")
@@ -178,10 +192,12 @@ def ascii_bar(used, total, block="█", width=20, label=""):
     """Draw a horizontal ASCII bar chart. Each block = 5% (20 blocks for 100%)."""
     if total == 0:
         return block * width + " " + "(N/A)" + (f" {label}" if label else "")
-    filled = round((used / total) * width)
+    used = max(0, used)
+    total = max(0, total)
+    pct = min((used / total) * 100, 100) if total > 0 else 0
+    filled = min(round((used / total) * width), width) if total > 0 else 0
     empty = width - filled
     bar = block * filled + "░" * empty
-    pct = (used / total) * 100
     label_str = f"{label} " if label else ""
     return f"{bar} {label_str}{pct:.0f}% ({used}/{total})"
 
@@ -199,46 +215,53 @@ def main(config_path=None, debug=False):
     except (NetworkError, HTTPError, InvalidResponseError) as e:
         print(f"❌ {e}")
         sys.exit(1)
+    except Exception as e:
+        print(f"❌ Unexpected error: {e}")
+        sys.exit(1)
     
-    if data["base_resp"]["status_code"] == STATUS_COOKIES_EXPIRED:
-        print("❌ Cookies may be expired. Please update your cookies.")
-        print("   Check your config file or MINIMAX_COOKIES env var.")
-        return
-    
-    print(f"📊 MiniMax Usage Report — {now.strftime('%Y-%m-%d %H:%M UTC+8')}\n")
-    
-    for model in data["model_remains"]:
-        if model["model_name"] not in ["MiniMax-M*", "MiniMax-Hailuo-2.3-Fast-6s-768p"]:
-            continue
+    try:
+        if data["base_resp"]["status_code"] == STATUS_COOKIES_EXPIRED:
+            print("❌ Cookies may be expired. Please update your cookies.")
+            print("   Check your config file or MINIMAX_COOKIES env var.")
+            return
+        
+        print(f"📊 MiniMax Usage Report — {now.strftime('%Y-%m-%d %H:%M UTC+8')}\n")
+        
+        for model in data["model_remains"]:
+            if model["model_name"] not in ["MiniMax-M*", "MiniMax-Hailuo-2.3-Fast-6s-768p"]:
+                continue
+                
+            total = model.get("current_interval_total_count", 0)
+            remaining = model.get("current_interval_usage_count", 0)
+            used = total - remaining
             
-        total = model.get("current_interval_total_count", 0)
-        remaining = model.get("current_interval_usage_count", 0)
-        used = total - remaining
-        
-        if total == 0:
-            continue
-        
-        interval_start, interval_end = get_current_interval(now)
-        next_reset = get_next_reset_time(now)
-        hours, minutes, seconds = get_time_until_reset(now)
-        
-        if interval_end.day != interval_start.day:
-            total_interval_hours = 24 - interval_start.hour + interval_end.hour
-        else:
-            total_interval_hours = interval_end.hour - interval_start.hour
-        
-        hours_elapsed = total_interval_hours - (hours + minutes / 60 + seconds / 3600)
-        
-        usage_pct = (remaining / total) * 100 if total > 0 else 0
-        
-        print(f"**{model['model_name']}**")
-        print(f"  {ascii_bar(used, total, label='Usage:')}")
-        print(f"  {time_bar(hours_elapsed, total_interval_hours, label='Time:')}")
-        print(f"  Next reset: {next_reset.strftime('%H:%M UTC+8')}")
-        
-        if usage_pct < 10:
-            print(f"  ⚠️  Warning: Usage nearly exhausted ({usage_pct:.0f}%)")
-        print()
+            if total == 0:
+                continue
+            
+            interval_start, interval_end = get_current_interval(now)
+            next_reset = get_next_reset_time(now)
+            hours, minutes, seconds = get_time_until_reset(now)
+            
+            if interval_end.day != interval_start.day:
+                total_interval_hours = 24 - interval_start.hour + interval_end.hour
+            else:
+                total_interval_hours = interval_end.hour - interval_start.hour
+            
+            hours_elapsed = total_interval_hours - (hours + minutes / 60 + seconds / 3600)
+            
+            usage_pct = (remaining / total) * 100 if total > 0 else 0
+            
+            print(f"**{model['model_name']}**")
+            print(f"  {ascii_bar(used, total, label='Usage:')}")
+            print(f"  {time_bar(hours_elapsed, total_interval_hours, label='Time:')}")
+            print(f"  Next reset: {next_reset.strftime('%H:%M UTC+8')}")
+            
+            if usage_pct < 10:
+                print(f"  ⚠️  Warning: Usage nearly exhausted ({usage_pct:.0f}%)")
+            print()
+    except Exception as e:
+        print(f"❌ Unexpected error: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Fetch MiniMax API usage and report")

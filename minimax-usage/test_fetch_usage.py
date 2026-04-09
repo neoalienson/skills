@@ -13,7 +13,8 @@ sys.path.insert(0, os.path.dirname(__file__))
 from fetch_usage import (
     load_cookies, fetch_usage, format_time_remaining, time_bar, ascii_bar,
     main, get_timezone, load_config, get_local_timezone,
-    CookiesNotFoundError, NetworkError, HTTPError as FetchHTTPError, InvalidResponseError
+    CookiesNotFoundError, NetworkError, HTTPError as FetchHTTPError, InvalidResponseError,
+    NoRedirectsHandler
 )
 
 class TestLoadCookies:
@@ -172,6 +173,39 @@ class TestLoadCookies:
         config = load_config("/nonexistent/path/config.yml")
         assert config == {}
 
+    def test_load_config_empty_yaml_braces(self):
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(tempfile.mkdtemp())
+            with open("config.yml", "w") as f:
+                f.write("{}\n")
+            config = load_config()
+            assert config == {}
+        finally:
+            os.chdir(original_cwd)
+
+    def test_load_config_malformed_yaml_unclosed_quote(self):
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(tempfile.mkdtemp())
+            with open("config.yml", "w") as f:
+                f.write("minimax_cookies: 'unclosed\n")
+            config = load_config()
+            assert config == {}
+        finally:
+            os.chdir(original_cwd)
+
+    def test_load_config_malformed_yaml_bad_indentation(self):
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(tempfile.mkdtemp())
+            with open("config.yml", "w") as f:
+                f.write("minimax_cookies: [\n  incomplete\n")
+            config = load_config()
+            assert config == {}
+        finally:
+            os.chdir(original_cwd)
+
     def test_load_config_specific_path_has_highest_priority(self):
         original_cwd = os.getcwd()
         try:
@@ -190,23 +224,27 @@ class TestLoadCookies:
 
 
 class TestFetchUsage:
-    @patch('fetch_usage.urllib.request.urlopen')
+    @patch('fetch_usage.urllib.request.build_opener')
     @patch('fetch_usage.load_cookies')
-    def test_fetch_usage_success(self, mock_load_cookies, mock_urlopen):
+    def test_fetch_usage_success(self, mock_load_cookies, mock_build_opener):
         mock_load_cookies.return_value = "test_cookies"
+        mock_opener = MagicMock()
+        mock_build_opener.return_value = mock_opener
         mock_response = MagicMock()
         mock_response.read.return_value = json.dumps({"data": "test"}).encode()
-        mock_urlopen.return_value.__enter__.return_value = mock_response
+        mock_opener.open.return_value.__enter__.return_value = mock_response
         
         result = fetch_usage()
         
         assert result == {"data": "test"}
         mock_load_cookies.assert_called_once()
 
-    @patch('fetch_usage.urllib.request.urlopen')
+    @patch('fetch_usage.urllib.request.build_opener')
     @patch('fetch_usage.load_cookies')
-    def test_fetch_usage_with_real_api_response(self, mock_load_cookies, mock_urlopen):
+    def test_fetch_usage_with_real_api_response(self, mock_load_cookies, mock_build_opener):
         mock_load_cookies.return_value = "test_cookies"
+        mock_opener = MagicMock()
+        mock_build_opener.return_value = mock_opener
         mock_response = MagicMock()
         mock_response.read.return_value = json.dumps({
             "base_resp": {"status_code": 0},
@@ -214,65 +252,87 @@ class TestFetchUsage:
                 {"model_name": "MiniMax-M*", "current_interval_total_count": 100, "current_interval_usage_count": 50}
             ]
         }).encode()
-        mock_urlopen.return_value.__enter__.return_value = mock_response
+        mock_opener.open.return_value.__enter__.return_value = mock_response
         
         result = fetch_usage()
         
         assert result["base_resp"]["status_code"] == 0
         assert len(result["model_remains"]) == 1
 
-    @patch('fetch_usage.urllib.request.urlopen')
+    @patch('fetch_usage.urllib.request.build_opener')
     @patch('fetch_usage.load_cookies')
-    def test_fetch_usage_empty_response(self, mock_load_cookies, mock_urlopen):
+    def test_fetch_usage_empty_response(self, mock_load_cookies, mock_build_opener):
         mock_load_cookies.return_value = "test_cookies"
+        mock_opener = MagicMock()
+        mock_build_opener.return_value = mock_opener
         mock_response = MagicMock()
         mock_response.read.return_value = b""
-        mock_urlopen.return_value.__enter__.return_value = mock_response
+        mock_opener.open.return_value.__enter__.return_value = mock_response
         
         with pytest.raises(InvalidResponseError):
             fetch_usage()
 
-    @patch('fetch_usage.urllib.request.urlopen')
+    @patch('fetch_usage.urllib.request.build_opener')
     @patch('fetch_usage.load_cookies')
-    def test_fetch_usage_invalid_json(self, mock_load_cookies, mock_urlopen):
+    def test_fetch_usage_invalid_json(self, mock_load_cookies, mock_build_opener):
         mock_load_cookies.return_value = "test_cookies"
+        mock_opener = MagicMock()
+        mock_build_opener.return_value = mock_opener
         mock_response = MagicMock()
         mock_response.read.return_value = b"not valid json"
-        mock_urlopen.return_value.__enter__.return_value = mock_response
+        mock_opener.open.return_value.__enter__.return_value = mock_response
         
         with pytest.raises(InvalidResponseError):
             fetch_usage()
 
-    @patch('fetch_usage.urllib.request.urlopen')
+    @patch('fetch_usage.urllib.request.build_opener')
     @patch('fetch_usage.load_cookies')
-    def test_fetch_usage_network_error(self, mock_load_cookies, mock_urlopen):
+    def test_fetch_usage_network_error(self, mock_load_cookies, mock_build_opener):
         mock_load_cookies.return_value = "test_cookies"
-        mock_urlopen.side_effect = URLError("Connection refused")
+        mock_opener = MagicMock()
+        mock_build_opener.return_value = mock_opener
+        mock_opener.open.side_effect = URLError("Connection refused")
         
         with pytest.raises(NetworkError):
             fetch_usage()
 
-    @patch('fetch_usage.urllib.request.urlopen')
+    @patch('fetch_usage.urllib.request.build_opener')
     @patch('fetch_usage.load_cookies')
-    def test_fetch_usage_http_error(self, mock_load_cookies, mock_urlopen):
+    def test_fetch_usage_http_error(self, mock_load_cookies, mock_build_opener):
         mock_load_cookies.return_value = "test_cookies"
-        mock_urlopen.side_effect = HTTPError(url="", code=401, msg="Unauthorized", hdrs={}, fp=None)
+        mock_opener = MagicMock()
+        mock_build_opener.return_value = mock_opener
+        mock_opener.open.side_effect = HTTPError(url="", code=401, msg="Unauthorized", hdrs={}, fp=None)
         
         with pytest.raises(FetchHTTPError):
             fetch_usage()
 
-    @patch('fetch_usage.urllib.request.urlopen')
+    @patch('fetch_usage.urllib.request.build_opener')
     @patch('fetch_usage.load_cookies')
-    def test_fetch_usage_with_config_path(self, mock_load_cookies, mock_urlopen):
+    def test_fetch_usage_with_config_path(self, mock_load_cookies, mock_build_opener):
         mock_load_cookies.return_value = "test_cookies"
+        mock_opener = MagicMock()
+        mock_build_opener.return_value = mock_opener
         mock_response = MagicMock()
         mock_response.read.return_value = json.dumps({"data": "test"}).encode()
-        mock_urlopen.return_value.__enter__.return_value = mock_response
+        mock_opener.open.return_value.__enter__.return_value = mock_response
         
         result = fetch_usage("/custom/config/path.yml")
         
         assert result == {"data": "test"}
         mock_load_cookies.assert_called_once_with("/custom/config/path.yml", debug=False)
+
+    @patch('fetch_usage.urllib.request.build_opener')
+    @patch('fetch_usage.load_cookies')
+    def test_fetch_usage_redirect_raises_error(self, mock_load_cookies, mock_build_opener):
+        mock_load_cookies.return_value = "test_cookies"
+        mock_opener = MagicMock()
+        mock_build_opener.return_value = mock_opener
+        mock_opener.open.side_effect = HTTPError(url="", code=302, msg="Found", hdrs={}, fp=None)
+        
+        with pytest.raises(FetchHTTPError) as exc_info:
+            fetch_usage()
+        assert "302" in str(exc_info.value)
 
 
 class TestFormatTimeRemaining:
@@ -284,6 +344,10 @@ class TestFormatTimeRemaining:
 
     def test_seconds_only(self):
         assert format_time_remaining(0, 0, 30) == "30s"
+
+    def test_single_digit_seconds_not_padded(self):
+        assert format_time_remaining(0, 0, 5) == "5s"
+        assert format_time_remaining(0, 1, 5) == "1m 5s"
 
 
 class TestTimeBar:
@@ -317,6 +381,16 @@ class TestTimeBar:
         assert "(N/A)" in result
         assert "Time:" in result
 
+    def test_time_bar_fractional_hours_converts_to_minutes(self):
+        result = time_bar(5.5, 10)
+        assert "4h" in result
+        assert "30m" in result
+
+    def test_time_bar_fractional_hours_truncates(self):
+        result = time_bar(5.75, 10)
+        assert "4h" in result
+        assert "15m" in result
+
 
 class TestAsciiBar:
     def test_ascii_bar_full(self):
@@ -339,7 +413,7 @@ class TestAsciiBar:
         assert "(N/A)" in result
 
     def test_ascii_bar_with_label(self):
-        result = ascii_bar(50, 100, label="Quota:")
+        result = ascii_bar(50, 100, label="Usage:")
         assert "50%" in result
         assert "(50/100)" in result
         assert "Usage: " in result
@@ -348,6 +422,26 @@ class TestAsciiBar:
         result = ascii_bar(50, 0, label="Quota:")
         assert "(N/A)" in result
         assert "Quota:" in result
+
+    def test_ascii_bar_usage_over_100_percent(self):
+        result = ascii_bar(120, 100)
+        assert "100%" in result
+        assert "░" not in result or "█" in result
+
+    def test_ascii_bar_usage_exactly_100_percent(self):
+        result = ascii_bar(100, 100)
+        assert "100%" in result
+        assert "(100/100)" in result
+
+    def test_ascii_bar_negative_used(self):
+        result = ascii_bar(-20, 100)
+        assert "0%" in result
+        assert "(0/100)" in result
+
+    def test_ascii_bar_float_values(self):
+        result = ascii_bar(1.5, 100)
+        assert "2%" in result or "1%" in result
+        assert "1.5" in result
 
 
 class TestMain:
@@ -410,6 +504,55 @@ class TestMain:
         
         main()
         mock_fetch.assert_called_once_with(None, debug=False)
+
+    @patch('fetch_usage.datetime')
+    @patch('fetch_usage.get_current_interval')
+    @patch('fetch_usage.get_next_reset_time')
+    @patch('fetch_usage.get_time_until_reset')
+    @patch('fetch_usage.fetch_usage')
+    @patch('fetch_usage.load_cookies')
+    def test_main_handles_remaining_gt_total(self, mock_load_cookies, mock_fetch, mock_get_time_until_reset, mock_get_next_reset, mock_get_current_interval, mock_datetime):
+        mock_load_cookies.return_value = "test"
+        
+        now = datetime(2026, 3, 29, 18, 30)
+        mock_datetime.now.return_value = now
+        mock_get_current_interval.return_value = (datetime(2026, 3, 29, 15, 0), datetime(2026, 3, 29, 20, 0))
+        mock_get_next_reset.return_value = datetime(2026, 3, 29, 20, 0)
+        mock_get_time_until_reset.return_value = (1, 30, 0)
+        
+        mock_fetch.return_value = {
+            "base_resp": {"status_code": 0},
+            "model_remains": [
+                {
+                    "model_name": "MiniMax-M*",
+                    "current_interval_total_count": 100,
+                    "current_interval_usage_count": 120
+                }
+            ]
+        }
+        
+        main()
+        mock_fetch.assert_called_once_with(None, debug=False)
+
+    @patch('fetch_usage.fetch_usage')
+    @patch('fetch_usage.load_cookies')
+    def test_main_unhandled_exception_typeerror(self, mock_load_cookies, mock_fetch):
+        mock_load_cookies.return_value = "test"
+        mock_fetch.side_effect = TypeError("Unexpected API shape")
+        
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+        assert exc_info.value.code == 1
+
+    @patch('fetch_usage.fetch_usage')
+    @patch('fetch_usage.load_cookies')
+    def test_main_unhandled_exception_valueerror(self, mock_load_cookies, mock_fetch):
+        mock_load_cookies.return_value = "test"
+        mock_fetch.side_effect = ValueError("Unexpected API shape")
+        
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+        assert exc_info.value.code == 1
 
 
 class TestCommandLineArgs:

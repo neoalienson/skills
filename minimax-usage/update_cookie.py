@@ -24,7 +24,7 @@ def extract_cookie_from_curl_file(curl_file_path: str) -> str:
 
 def update_cookie_in_config(config_path: str, cookie: str) -> None:
     """Update or add minimax_cookies in config.yml, preserving other values."""
-    escaped_cookie = cookie.replace("\\", "\\\\").replace('"', '\\"')
+    escaped_cookie = cookie.replace("\\", "\\\\").replace("'", "''")
 
     if os.path.exists(config_path):
         with open(config_path, "r") as f:
@@ -36,13 +36,13 @@ def update_cookie_in_config(config_path: str, cookie: str) -> None:
     new_lines = []
     for line in lines:
         if line.startswith("minimax_cookies:"):
-            new_lines.append(f'minimax_cookies: "{escaped_cookie}"\n')
+            new_lines.append(f"minimax_cookies: '{escaped_cookie}'\n")
             updated = True
         else:
             new_lines.append(line)
 
     if not updated:
-        new_lines.append(f'minimax_cookies: "{escaped_cookie}"\n')
+        new_lines.append(f"minimax_cookies: '{escaped_cookie}'\n")
 
     with open(config_path, "w") as f:
         f.writelines(new_lines)

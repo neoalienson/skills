@@ -75,7 +75,7 @@ class TestUpdateCookieInConfig:
         update_cookie_in_config(str(config_file), "new")
 
         content = config_file.read_text()
-        assert "minimax_cookies: \"new\"" in content
+        assert "minimax_cookies: 'new'" in content
         assert "timezone: Asia/Shanghai" in content
 
     def test_adds_cookie_if_missing(self, tmp_path):
@@ -85,7 +85,7 @@ class TestUpdateCookieInConfig:
         update_cookie_in_config(str(config_file), "my_cookie")
 
         content = config_file.read_text()
-        assert "minimax_cookies: \"my_cookie\"" in content
+        assert "minimax_cookies: 'my_cookie'" in content
         assert "timezone: UTC" in content
 
     def test_creates_new_config(self, tmp_path):
@@ -94,16 +94,16 @@ class TestUpdateCookieInConfig:
         update_cookie_in_config(str(config_file), "my_cookie")
 
         content = config_file.read_text()
-        assert "minimax_cookies: \"my_cookie\"" in content
+        assert "minimax_cookies: 'my_cookie'" in content
 
-    def test_cookie_with_double_quotes_escaped(self, tmp_path):
+    def test_cookie_with_double_quotes_in_single_quotes(self, tmp_path):
         config_file = tmp_path / "config.yml"
         config_file.write_text("minimax_cookies: old\n")
 
         update_cookie_in_config(str(config_file), 'cookie"with"quotes')
 
         content = config_file.read_text()
-        assert 'cookie\\"with\\"quotes' in content
+        assert "minimax_cookies: 'cookie\"with\"quotes'" in content
 
     def test_cookie_with_backslash_escaped(self, tmp_path):
         config_file = tmp_path / "config.yml"
@@ -121,7 +121,7 @@ class TestUpdateCookieInConfig:
         update_cookie_in_config(str(config_file), "")
 
         content = config_file.read_text()
-        assert 'minimax_cookies: ""' in content
+        assert "minimax_cookies: ''" in content
 
     def test_preserves_multiple_other_values(self, tmp_path):
         config_file = tmp_path / "config.yml"
@@ -130,7 +130,7 @@ class TestUpdateCookieInConfig:
         update_cookie_in_config(str(config_file), "new")
 
         content = config_file.read_text()
-        assert "minimax_cookies: \"new\"" in content
+        assert "minimax_cookies: 'new'" in content
         assert "timezone: Asia/Shanghai" in content
         assert "other: value" in content
 
@@ -141,7 +141,52 @@ class TestUpdateCookieInConfig:
         update_cookie_in_config(str(config_file), "new")
 
         content = config_file.read_text()
-        assert "minimax_cookies: \"new\"" in content
+        assert "minimax_cookies: 'new'" in content
+
+    def test_cookie_with_yaml_special_chars_colon(self, tmp_path):
+        config_file = tmp_path / "config.yml"
+        config_file.write_text("minimax_cookies: old\n")
+
+        update_cookie_in_config(str(config_file), "session:token123")
+
+        content = config_file.read_text()
+        assert "minimax_cookies: 'session:token123'" in content
+
+    def test_cookie_with_yaml_special_chars_hash(self, tmp_path):
+        config_file = tmp_path / "config.yml"
+        config_file.write_text("minimax_cookies: old\n")
+
+        update_cookie_in_config(str(config_file), "session#token123")
+
+        content = config_file.read_text()
+        assert "minimax_cookies: 'session#token123'" in content
+
+    def test_cookie_with_yaml_special_chars_ampersand(self, tmp_path):
+        config_file = tmp_path / "config.yml"
+        config_file.write_text("minimax_cookies: old\n")
+
+        update_cookie_in_config(str(config_file), "session&token123")
+
+        content = config_file.read_text()
+        assert "minimax_cookies: 'session&token123'" in content
+
+    def test_cookie_with_yaml_special_chars_asterisk(self, tmp_path):
+        config_file = tmp_path / "config.yml"
+        config_file.write_text("minimax_cookies: old\n")
+
+        update_cookie_in_config(str(config_file), "session*token123")
+
+        content = config_file.read_text()
+        assert "minimax_cookies: 'session*token123'" in content
+
+    def test_cookie_with_single_quote_escaped(self, tmp_path):
+        config_file = tmp_path / "config.yml"
+        config_file.write_text("minimax_cookies: old\n")
+
+        update_cookie_in_config(str(config_file), "session'token123")
+
+        content = config_file.read_text()
+        assert "minimax_cookies: 'session''token123'" in content
 
 
 if __name__ == "__main__":
