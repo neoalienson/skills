@@ -228,34 +228,49 @@ def main(config_path=None, debug=False):
         print(f"📊 MiniMax Usage Report — {now.strftime('%Y-%m-%d %H:%M UTC+8')}\n")
         
         for model in data["model_remains"]:
-            if model["model_name"] not in ["MiniMax-M*", "MiniMax-Hailuo-2.3-Fast-6s-768p"]:
+            if model["model_name"] != "MiniMax-M*":
                 continue
-                
+
             total = model.get("current_interval_total_count", 0)
             remaining = model.get("current_interval_usage_count", 0)
             used = total - remaining
-            
+
             if total == 0:
                 continue
-            
+
+            weekly_total = model.get("current_weekly_total_count", 0)
+            weekly_remaining = model.get("current_weekly_usage_count", 0)
+            weekly_used = weekly_total - weekly_remaining
+
             interval_start, interval_end = get_current_interval(now)
             next_reset = get_next_reset_time(now)
             hours, minutes, seconds = get_time_until_reset(now)
-            
+
             if interval_end.day != interval_start.day:
                 total_interval_hours = 24 - interval_start.hour + interval_end.hour
             else:
                 total_interval_hours = interval_end.hour - interval_start.hour
-            
+
             hours_elapsed = total_interval_hours - (hours + minutes / 60 + seconds / 3600)
-            
+
             usage_pct = (remaining / total) * 100 if total > 0 else 0
-            
+
             print(f"**{model['model_name']}**")
             print(f"  {ascii_bar(used, total, label='Usage:')}")
             print(f"  {time_bar(hours_elapsed, total_interval_hours, label='Time:')}")
             print(f"  Next reset: {next_reset.strftime('%H:%M UTC+8')}")
-            
+
+            if weekly_total > 0:
+                weekly_start = datetime.fromtimestamp(model["weekly_start_time"] / 1000, tz=timezone.utc).astimezone(get_timezone(config_path))
+                weekly_end = datetime.fromtimestamp(model["weekly_end_time"] / 1000, tz=timezone.utc).astimezone(get_timezone(config_path))
+                weekly_hours = (weekly_end - now).total_seconds() / 3600
+                weekly_total_hours = (weekly_end - weekly_start).total_seconds() / 3600
+                weekly_elapsed = weekly_total_hours - weekly_hours
+                print()
+                print(f"  {ascii_bar(weekly_used, weekly_total, label='Usage:')}")
+                print(f"  {time_bar(weekly_elapsed, weekly_total_hours, label='Time:')}")
+                print(f"  Week quota Next reset: {weekly_end.strftime('%d %H:%M UTC+8')}")
+
             if usage_pct < 10:
                 print(f"  ⚠️  Warning: Usage nearly exhausted ({usage_pct:.0f}%)")
             print()

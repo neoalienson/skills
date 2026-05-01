@@ -1,0 +1,164 @@
+#!/usr/bin/env python3
+"""
+Unit tests for weekly limit feature in fetch_usage.py
+"""
+
+import unittest
+from unittest.mock import patch, MagicMock
+from datetime import datetime, timezone
+from io import StringIO
+
+import sys
+import os
+sys.path.insert(0, os.path.dirname(__file__))
+
+from fetch_usage import main, ascii_bar, time_bar
+
+
+class TestWeeklyLimit(unittest.TestCase):
+
+    def _run_main_with_data(self, mock_data):
+        captured = StringIO()
+        with patch('fetch_usage.fetch_usage', return_value=mock_data):
+            with patch('fetch_usage.now_utc8') as mock_now:
+                mock_now.return_value = datetime(2026, 5, 2, 0, 0, tzinfo=timezone.utc).astimezone(
+                    timezone.utc
+                )
+                with patch('sys.stdout', captured):
+                    main()
+        return captured.getvalue()
+
+    def test_weekly_limit_present(self):
+        mock_data = {
+            "base_resp": {"status_code": 0},
+            "model_remains": [{
+                "model_name": "MiniMax-M*",
+                "current_interval_total_count": 600,
+                "current_interval_usage_count": 300,
+                "current_weekly_total_count": 6000,
+                "current_weekly_usage_count": 3000,
+                "weekly_start_time": 1777219200000,
+                "weekly_end_time": 1777824000000,
+            }]
+        }
+        output = self._run_main_with_data(mock_data)
+        self.assertIn("Usage:", output)
+        self.assertIn("Week quota Next reset:", output)
+
+    def test_weekly_total_zero_skips_weekly_section(self):
+        mock_data = {
+            "base_resp": {"status_code": 0},
+            "model_remains": [{
+                "model_name": "MiniMax-M*",
+                "current_interval_total_count": 600,
+                "current_interval_usage_count": 300,
+                "current_weekly_total_count": 0,
+                "current_weekly_usage_count": 0,
+                "weekly_start_time": 1777219200000,
+                "weekly_end_time": 1777824000000,
+            }]
+        }
+        output = self._run_main_with_data(mock_data)
+        self.assertNotIn("Week quota", output)
+
+    def test_weekly_fully_used(self):
+        mock_data = {
+            "base_resp": {"status_code": 0},
+            "model_remains": [{
+                "model_name": "MiniMax-M*",
+                "current_interval_total_count": 600,
+                "current_interval_usage_count": 600,
+                "current_weekly_total_count": 6000,
+                "current_weekly_usage_count": 0,
+                "weekly_start_time": 1777219200000,
+                "weekly_end_time": 1777824000000,
+            }]
+        }
+        output = self._run_main_with_data(mock_data)
+        self.assertIn("100%", output)
+        self.assertIn("6000/6000", output)
+
+    def test_weekly_zero_usage(self):
+        mock_data = {
+            "base_resp": {"status_code": 0},
+            "model_remains": [{
+                "model_name": "MiniMax-M*",
+                "current_interval_total_count": 600,
+                "current_interval_usage_count": 0,
+                "current_weekly_total_count": 6000,
+                "current_weekly_usage_count": 6000,
+                "weekly_start_time": 1777219200000,
+                "weekly_end_time": 1777824000000,
+            }]
+        }
+        output = self._run_main_with_data(mock_data)
+        self.assertIn("0%", output)
+        self.assertIn("0/6000", output)
+
+    def test_non_minimax_star_model_skipped(self):
+        mock_data = {
+            "base_resp": {"status_code": 0},
+            "model_remains": [{
+                "model_name": "Other-Model",
+                "current_interval_total_count": 100,
+                "current_interval_usage_count": 50,
+                "current_weekly_total_count": 1000,
+                "current_weekly_usage_count": 500,
+                "weekly_start_time": 1777219200000,
+                "weekly_end_time": 1777824000000,
+            }]
+        }
+        output = self._run_main_with_data(mock_data)
+        self.assertNotIn("Other-Model", output)
+
+    def test_weekly_end_time_format(self):
+        mock_data = {
+            "base_resp": {"status_code": 0},
+            "model_remains": [{
+                "model_name": "MiniMax-M*",
+                "current_interval_total_count": 600,
+                "current_interval_usage_count": 0,
+                "current_weekly_total_count": 6000,
+                "current_weekly_usage_count": 0,
+                "weekly_start_time": 1777219200000,
+                "weekly_end_time": 1777824000000,
+            }]
+        }
+        output = self._run_main_with_data(mock_data)
+        self.assertIn("UTC+8", output)
+
+
+class TestAsciiBar(unittest.TestCase):
+
+    def test_zero_total(self):
+        result = ascii_bar(0, 0)
+        self.assertIn("N/A", result)
+
+    def test_full_usage(self):
+        result = ascii_bar(100, 100)
+        self.assertIn("100%", result)
+        self.assertIn("100/100", result)
+
+    def test_half_usage(self):
+        result = ascii_bar(50, 100)
+        self.assertIn("50%", result)
+        self.assertIn("50/100", result)
+
+    def test_negative_used_clamped_to_zero(self):
+        result = ascii_bar(-10, 100)
+        self.assertNotIn("-", result)
+
+
+class TestTimeBar(unittest.TestCase):
+
+    def test_zero_total_hours(self):
+        result = time_bar(5, 0)
+        self.assertIn("N/A", result)
+
+    def test_normal_time_bar(self):
+        result = time_bar(3, 10)
+        self.assertIn("%", result)
+
+
+if __name__ == "__main__":
+    unittest.main()
