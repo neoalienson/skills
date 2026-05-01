@@ -12,15 +12,15 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(__file__))
 
-from fetch_usage import main, ascii_bar, time_bar
+from run import main, ascii_bar, time_bar
 
 
 class TestWeeklyLimit(unittest.TestCase):
 
     def _run_main_with_data(self, mock_data):
         captured = StringIO()
-        with patch('fetch_usage.fetch_usage', return_value=mock_data):
-            with patch('fetch_usage.now_utc8') as mock_now:
+        with patch('run.fetch_usage', return_value=mock_data):
+            with patch('run.now_utc8') as mock_now:
                 mock_now.return_value = datetime(2026, 5, 2, 0, 0, tzinfo=timezone.utc).astimezone(
                     timezone.utc
                 )

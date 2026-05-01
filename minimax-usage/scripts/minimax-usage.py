@@ -85,12 +85,28 @@ def load_config(config_path=None):
             except yaml.YAMLError:
                 return {}
         return {}
-    
-    config_paths = [os.path.expanduser("~/.minimax_config.yml"), "config.yml"]
-    for path in config_paths:
+
+    script_dir = os.path.dirname(os.path.realpath(__file__))
+    project_root = os.path.dirname(script_dir)
+    user_config = os.path.expanduser("~/.minimax_config.yml")
+    cwd_config = "config.yml"
+
+    for path in [cwd_config, user_config]:
         if os.path.exists(path):
             try:
                 with open(path, "r") as f:
+                    return yaml.safe_load(f) or {}
+            except yaml.YAMLError:
+                return {}
+
+    in_project = project_root in os.getcwd()
+    is_executed = not hasattr(sys, 'frozen') and sys.argv[0] and os.path.basename(sys.argv[0]) in ('minimax-usage.py', 'minimax-usage')
+
+    if in_project or is_executed:
+        script_config = os.path.join(project_root, "config.yml")
+        if os.path.exists(script_config):
+            try:
+                with open(script_config, "r") as f:
                     return yaml.safe_load(f) or {}
             except yaml.YAMLError:
                 return {}

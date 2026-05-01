@@ -47,7 +47,7 @@ Common values:
 ## Usage
 
 ```bash
-python fetch_usage.py [-c CONFIG_PATH]
+python scripts/minimax-usage.py [-c CONFIG_PATH]
 ```
 
 Options:
@@ -67,7 +67,7 @@ If you see this error when scheduling:
 **Solution**: Use the `-c` flag to specify the config path directly, avoiding the need for `cd`:
 
 ```bash
-python3 /skills/minimax-usage/fetch_usage.py -c /skills/minimax-usage/config.yml
+python3 /skills/minimax-usage/scripts/minimax-usage.py -c /skills/minimax-usage/config.yml
 ```
 
 In your scheduler prompt, pass the config path via `-c`:

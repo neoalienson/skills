@@ -11,12 +11,12 @@ Check your MiniMax API usage by calling the MiniMax platform API endpoint. Uses 
 
 ## Files
 
-- `fetch_usage.py` — Main script that fetches and reports usage
+- `scripts/minimax-usage.py` — Main script that fetches and reports usage
 
 ## Usage
 
 ```bash
-python3 fetch_usage.py -c `path to run config.yml`
+python3 scripts/minimax-usage.py -c `path to run config.yml`
 ```
 
 ## Output Format

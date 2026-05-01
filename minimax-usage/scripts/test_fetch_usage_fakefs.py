@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from fetch_usage import (
+from run import (
     load_cookies, load_config, get_timezone,
     CookiesNotFoundError
 )
