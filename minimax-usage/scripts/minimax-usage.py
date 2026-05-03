@@ -149,9 +149,74 @@ def load_cookies(config_path=None, debug=False):
         "Set MINIMAX_COOKIES env var, or create config.yml with minimax_cookies"
     )
 
+
+def load_api_key(config_path=None, debug=False):
+    if config_path:
+        if debug:
+            print(f"[DEBUG] Loading api_key from config: {config_path}")
+        if not os.path.exists(config_path):
+            return None
+        with open(config_path, "r") as f:
+            config = yaml.safe_load(f) or {}
+        if "api_key" in config and config["api_key"]:
+            if debug:
+                print(f"[DEBUG]   Found api_key in config")
+            return config["api_key"]
+        return None
+
+    api_key = os.environ.get("MINIMAX_API_KEY", "")
+    if api_key:
+        if debug:
+            print(f"[DEBUG] Found api_key in MINIMAX_API_KEY env var")
+        return api_key
+    if debug:
+        print(f"[DEBUG] No api_key in MINIMAX_API_KEY env var")
+
+    config = load_config(config_path)
+    if "api_key" in config and config["api_key"]:
+        if debug:
+            print(f"[DEBUG] Found api_key in default config file")
+        return config["api_key"]
+
+    return None
+
+
 def fetch_usage(config_path=None, debug=False):
+    api_key = load_api_key(config_path, debug=debug)
+
+    auth_method = None
+
+    if api_key:
+        auth_method = "api_key"
+        req = urllib.request.Request(
+            "https://www.minimaxi.com/v1/token_plan/remains",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            },
+            method="GET"
+        )
+        no_redirect_opener = urllib.request.build_opener(NoRedirectsHandler)
+        try:
+            with no_redirect_opener.open(req, timeout=30) as response:
+                result = response.read().decode("utf-8")
+        except urllib.error.HTTPError as e:
+            raise HTTPError(f"HTTP error {e.code}. API key may be invalid.")
+        except urllib.error.URLError as e:
+            raise NetworkError(f"Network error: {e.reason}. Please check your internet connection.")
+
+        if not result.strip():
+            raise InvalidResponseError("Failed to fetch usage data. API key may be invalid.")
+
+        try:
+            data = json.loads(result)
+            data["_auth_method"] = "api_key"
+            return data
+        except json.JSONDecodeError:
+            raise InvalidResponseError("Invalid response from API. API key may be invalid.")
+
     cookies = load_cookies(config_path, debug=debug)
-    
+
     req = urllib.request.Request(
         "https://www.minimaxi.com/v1/api/openplatform/coding_plan/remains?GroupId=2034608336271319731",
         headers={
@@ -236,27 +301,39 @@ def main(config_path=None, debug=False):
         sys.exit(1)
     
     try:
+        auth_method = data.get("_auth_method", "cookies")
         if data["base_resp"]["status_code"] == STATUS_COOKIES_EXPIRED:
             print("❌ Cookies may be expired. Please update your cookies.")
             print("   Check your config file or MINIMAX_COOKIES env var.")
             return
-        
+
         print(f"📊 MiniMax Usage Report — {now.strftime('%Y-%m-%d %H:%M UTC+8')}\n")
-        
+
         for model in data["model_remains"]:
             if model["model_name"] != "MiniMax-M*":
                 continue
 
             total = model.get("current_interval_total_count", 0)
-            remaining = model.get("current_interval_usage_count", 0)
-            used = total - remaining
+            interval_usage = model.get("current_interval_usage_count", 0)
 
             if total == 0:
                 continue
 
+            if auth_method == "api_key":
+                used = interval_usage
+                remaining = total - used
+            else:
+                remaining = interval_usage
+                used = total - remaining
+
             weekly_total = model.get("current_weekly_total_count", 0)
-            weekly_remaining = model.get("current_weekly_usage_count", 0)
-            weekly_used = weekly_total - weekly_remaining
+            weekly_interval_usage = model.get("current_weekly_usage_count", 0)
+            if auth_method == "api_key":
+                weekly_used = weekly_interval_usage
+                weekly_remaining = weekly_total - weekly_used
+            else:
+                weekly_remaining = weekly_interval_usage
+                weekly_used = weekly_total - weekly_remaining
 
             interval_start, interval_end = get_current_interval(now)
             next_reset = get_next_reset_time(now)
@@ -269,7 +346,8 @@ def main(config_path=None, debug=False):
 
             hours_elapsed = total_interval_hours - (hours + minutes / 60 + seconds / 3600)
 
-            usage_pct = (remaining / total) * 100 if total > 0 else 0
+            usage_pct = (used / total) * 100 if total > 0 else 0
+            remaining_pct = (remaining / total) * 100 if total > 0 else 0
 
             print(f"**{model['model_name']}**")
             print(f"  {ascii_bar(used, total, label='Usage:')}")
@@ -287,8 +365,8 @@ def main(config_path=None, debug=False):
                 print(f"  {time_bar(weekly_elapsed, weekly_total_hours, label='Time:')}")
                 print(f"  Week quota Next reset: {weekly_end.strftime('%d %H:%M UTC+8')}")
 
-            if usage_pct < 10:
-                print(f"  ⚠️  Warning: Usage nearly exhausted ({usage_pct:.0f}%)")
+            if remaining_pct < 10:
+                print(f"  ⚠️  Warning: Usage nearly exhausted ({remaining_pct:.0f}%)")
             print()
     except Exception as e:
         print(f"❌ Unexpected error: {e}")

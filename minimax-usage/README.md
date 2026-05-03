@@ -9,22 +9,36 @@ A CLI tool to fetch and display your MiniMax API usage with precise time calcula
 
 ## Setup
 
-### 1. Get Cookies
+### 1. Get Credentials (Choose One)
 
+**Option A: API Key (Recommended)**
+1. Login to [https://platform.minimaxi.com](https://platform.minimaxi.com)
+2. Go to Settings → API Keys
+3. Create a new API key and copy it
+
+**Option B: Cookies**
 1. Login to [https://platform.minimaxi.com](https://platform.minimaxi.com)
 2. Open Developer Tools (F12) → Application → Cookies
 3. Copy the cookie value
 
 ### 2. Configure Credentials
 
-**Option A: Environment Variable**
+**Option A: Environment Variable (API Key)**
+```bash
+export MINIMAX_API_KEY='your_api_key'
+```
+
+**Option B: Environment Variable (Cookies)**
 ```bash
 export MINIMAX_COOKIES='your_cookie_value'
 ```
 
-**Option B: config.yml**
+**Option C: config.yml**
 Create a `config.yml` file:
 ```yaml
+# API key (takes precedence over cookies)
+api_key: your_api_key_here
+# OR cookies
 minimax_cookies: your_cookie_value_here
 # timezone: (optional, defaults to system timezone)
 ```
@@ -83,6 +97,9 @@ keep the output format from the skill
 ## Sample Config
 
 ```yaml
+# API key (recommended - takes precedence)
+api_key: your_api_key_here
+# OR cookies
 minimax_cookies: sensorsdata2015jssdkchannel=...; HERTZ-SESSION=...
 timezone: Asia/Hong_Kong
 ```

@@ -224,9 +224,10 @@ class TestLoadCookies:
 
 
 class TestFetchUsage:
+    @patch('run.load_api_key', return_value=None)
     @patch('run.urllib.request.build_opener')
     @patch('run.load_cookies')
-    def test_fetch_usage_success(self, mock_load_cookies, mock_build_opener):
+    def test_fetch_usage_success(self, mock_load_cookies, mock_build_opener, mock_load_api_key):
         mock_load_cookies.return_value = "test_cookies"
         mock_opener = MagicMock()
         mock_build_opener.return_value = mock_opener
@@ -235,13 +236,16 @@ class TestFetchUsage:
         mock_opener.open.return_value.__enter__.return_value = mock_response
         
         result = fetch_usage()
-        
+
+        if "_auth_method" in result:
+            result.pop("_auth_method")
         assert result == {"data": "test"}
         mock_load_cookies.assert_called_once()
 
+    @patch('run.load_api_key', return_value=None)
     @patch('run.urllib.request.build_opener')
     @patch('run.load_cookies')
-    def test_fetch_usage_with_real_api_response(self, mock_load_cookies, mock_build_opener):
+    def test_fetch_usage_with_real_api_response(self, mock_load_cookies, mock_build_opener, mock_load_api_key):
         mock_load_cookies.return_value = "test_cookies"
         mock_opener = MagicMock()
         mock_build_opener.return_value = mock_opener
@@ -259,9 +263,10 @@ class TestFetchUsage:
         assert result["base_resp"]["status_code"] == 0
         assert len(result["model_remains"]) == 1
 
+    @patch('run.load_api_key', return_value=None)
     @patch('run.urllib.request.build_opener')
     @patch('run.load_cookies')
-    def test_fetch_usage_empty_response(self, mock_load_cookies, mock_build_opener):
+    def test_fetch_usage_empty_response(self, mock_load_cookies, mock_build_opener, mock_load_api_key):
         mock_load_cookies.return_value = "test_cookies"
         mock_opener = MagicMock()
         mock_build_opener.return_value = mock_opener
@@ -272,9 +277,10 @@ class TestFetchUsage:
         with pytest.raises(InvalidResponseError):
             fetch_usage()
 
+    @patch('run.load_api_key', return_value=None)
     @patch('run.urllib.request.build_opener')
     @patch('run.load_cookies')
-    def test_fetch_usage_invalid_json(self, mock_load_cookies, mock_build_opener):
+    def test_fetch_usage_invalid_json(self, mock_load_cookies, mock_build_opener, mock_load_api_key):
         mock_load_cookies.return_value = "test_cookies"
         mock_opener = MagicMock()
         mock_build_opener.return_value = mock_opener
@@ -285,9 +291,10 @@ class TestFetchUsage:
         with pytest.raises(InvalidResponseError):
             fetch_usage()
 
+    @patch('run.load_api_key', return_value=None)
     @patch('run.urllib.request.build_opener')
     @patch('run.load_cookies')
-    def test_fetch_usage_network_error(self, mock_load_cookies, mock_build_opener):
+    def test_fetch_usage_network_error(self, mock_load_cookies, mock_build_opener, mock_load_api_key):
         mock_load_cookies.return_value = "test_cookies"
         mock_opener = MagicMock()
         mock_build_opener.return_value = mock_opener
@@ -296,9 +303,10 @@ class TestFetchUsage:
         with pytest.raises(NetworkError):
             fetch_usage()
 
+    @patch('run.load_api_key', return_value=None)
     @patch('run.urllib.request.build_opener')
     @patch('run.load_cookies')
-    def test_fetch_usage_http_error(self, mock_load_cookies, mock_build_opener):
+    def test_fetch_usage_http_error(self, mock_load_cookies, mock_build_opener, mock_load_api_key):
         mock_load_cookies.return_value = "test_cookies"
         mock_opener = MagicMock()
         mock_build_opener.return_value = mock_opener
@@ -307,9 +315,10 @@ class TestFetchUsage:
         with pytest.raises(FetchHTTPError):
             fetch_usage()
 
+    @patch('run.load_api_key', return_value=None)
     @patch('run.urllib.request.build_opener')
     @patch('run.load_cookies')
-    def test_fetch_usage_with_config_path(self, mock_load_cookies, mock_build_opener):
+    def test_fetch_usage_with_config_path(self, mock_load_cookies, mock_build_opener, mock_load_api_key):
         mock_load_cookies.return_value = "test_cookies"
         mock_opener = MagicMock()
         mock_build_opener.return_value = mock_opener
@@ -322,9 +331,10 @@ class TestFetchUsage:
         assert result == {"data": "test"}
         mock_load_cookies.assert_called_once_with("/custom/config/path.yml", debug=False)
 
+    @patch('run.load_api_key', return_value=None)
     @patch('run.urllib.request.build_opener')
     @patch('run.load_cookies')
-    def test_fetch_usage_redirect_raises_error(self, mock_load_cookies, mock_build_opener):
+    def test_fetch_usage_redirect_raises_error(self, mock_load_cookies, mock_build_opener, mock_load_api_key):
         mock_load_cookies.return_value = "test_cookies"
         mock_opener = MagicMock()
         mock_build_opener.return_value = mock_opener
