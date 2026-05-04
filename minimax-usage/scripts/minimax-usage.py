@@ -16,14 +16,9 @@ from datetime import datetime, timezone
 from time_calc import get_current_interval, get_next_reset_time, get_time_until_reset
 
 STATUS_SUCCESS = 0
-STATUS_COOKIES_EXPIRED = 1004
 
 
-class CookiesNotFoundError(Exception):
-    pass
-
-
-class CookiesExpiredError(Exception):
+class ApiKeyNotFoundError(Exception):
     pass
 
 
@@ -116,40 +111,6 @@ def now_utc8(config_path=None, debug=False):
     return datetime.now(timezone.utc).astimezone(get_timezone(config_path=config_path, debug=debug))
 
 
-def load_cookies(config_path=None, debug=False):
-    if config_path:
-        if debug:
-            print(f"[DEBUG] Loading cookies from config: {config_path}")
-        if not os.path.exists(config_path):
-            raise CookiesNotFoundError(f"Config file not found: {config_path}")
-        with open(config_path, "r") as f:
-            config = yaml.safe_load(f) or {}
-        if "minimax_cookies" in config and config["minimax_cookies"]:
-            if debug:
-                print(f"[DEBUG]   Found cookies in config")
-            return config["minimax_cookies"]
-        raise CookiesNotFoundError(f"Config file {config_path} does not contain 'minimax_cookies' field")
-    
-    cookies = os.environ.get("MINIMAX_COOKIES", "")
-    if cookies:
-        if debug:
-            print(f"[DEBUG] Found cookies in MINIMAX_COOKIES env var")
-        return cookies
-    if debug:
-        print(f"[DEBUG] No cookies in MINIMAX_COOKIES env var")
-    
-    config = load_config(config_path)
-    if "minimax_cookies" in config and config["minimax_cookies"]:
-        if debug:
-            print(f"[DEBUG] Found cookies in default config file")
-        return config["minimax_cookies"]
-    
-    raise CookiesNotFoundError(
-        "No cookies found in MINIMAX_COOKIES env var or any config file. "
-        "Set MINIMAX_COOKIES env var, or create config.yml with minimax_cookies"
-    )
-
-
 def load_api_key(config_path=None, debug=False):
     if config_path:
         if debug:
@@ -183,67 +144,35 @@ def load_api_key(config_path=None, debug=False):
 
 def fetch_usage(config_path=None, debug=False):
     api_key = load_api_key(config_path, debug=debug)
-
-    auth_method = None
-
-    if api_key:
-        auth_method = "api_key"
-        req = urllib.request.Request(
-            "https://www.minimaxi.com/v1/token_plan/remains",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
-            },
-            method="GET"
+    if not api_key:
+        raise ApiKeyNotFoundError(
+            "No API key found. Set MINIMAX_API_KEY env var, or create config.yml with api_key"
         )
-        no_redirect_opener = urllib.request.build_opener(NoRedirectsHandler)
-        try:
-            with no_redirect_opener.open(req, timeout=30) as response:
-                result = response.read().decode("utf-8")
-        except urllib.error.HTTPError as e:
-            raise HTTPError(f"HTTP error {e.code}. API key may be invalid.")
-        except urllib.error.URLError as e:
-            raise NetworkError(f"Network error: {e.reason}. Please check your internet connection.")
-
-        if not result.strip():
-            raise InvalidResponseError("Failed to fetch usage data. API key may be invalid.")
-
-        try:
-            data = json.loads(result)
-            data["_auth_method"] = "api_key"
-            return data
-        except json.JSONDecodeError:
-            raise InvalidResponseError("Invalid response from API. API key may be invalid.")
-
-    cookies = load_cookies(config_path, debug=debug)
 
     req = urllib.request.Request(
-        "https://www.minimaxi.com/v1/api/openplatform/coding_plan/remains?GroupId=2034608336271319731",
+        "https://www.minimaxi.com/v1/token_plan/remains",
         headers={
-            "Cookie": cookies,
-            "origin": "https://platform.minimaxi.com",
-            "referer": "https://platform.minimaxi.com/",
-            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 Edg/146.0.0.0"
-        }
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        },
+        method="GET"
     )
-    
     no_redirect_opener = urllib.request.build_opener(NoRedirectsHandler)
-    
     try:
         with no_redirect_opener.open(req, timeout=30) as response:
             result = response.read().decode("utf-8")
     except urllib.error.HTTPError as e:
-        raise HTTPError(f"HTTP error {e.code}. Cookies may be expired.")
+        raise HTTPError(f"HTTP error {e.code}. API key may be invalid.")
     except urllib.error.URLError as e:
         raise NetworkError(f"Network error: {e.reason}. Please check your internet connection.")
-    
+
     if not result.strip():
-        raise InvalidResponseError("Failed to fetch usage data. Cookies may be expired.")
-    
+        raise InvalidResponseError("Failed to fetch usage data. API key may be invalid.")
+
     try:
         return json.loads(result)
     except json.JSONDecodeError:
-        raise InvalidResponseError("Invalid response from API. Cookies may be expired.")
+        raise InvalidResponseError("Invalid response from API. API key may be invalid.")
 
 def format_time_remaining(hours, minutes, seconds):
     if hours > 0:
@@ -290,7 +219,7 @@ def main(config_path=None, debug=False):
         if debug:
             print("[DEBUG] Fetching usage data...")
         data = fetch_usage(config_path, debug=debug)
-    except CookiesNotFoundError as e:
+    except ApiKeyNotFoundError as e:
         print(f"❌ {e}")
         sys.exit(1)
     except (NetworkError, HTTPError, InvalidResponseError) as e:
@@ -299,14 +228,8 @@ def main(config_path=None, debug=False):
     except Exception as e:
         print(f"❌ Unexpected error: {e}")
         sys.exit(1)
-    
-    try:
-        auth_method = data.get("_auth_method", "cookies")
-        if data["base_resp"]["status_code"] == STATUS_COOKIES_EXPIRED:
-            print("❌ Cookies may be expired. Please update your cookies.")
-            print("   Check your config file or MINIMAX_COOKIES env var.")
-            return
 
+    try:
         print(f"📊 MiniMax Usage Report — {now.strftime('%Y-%m-%d %H:%M UTC+8')}\n")
 
         for model in data["model_remains"]:
@@ -314,26 +237,15 @@ def main(config_path=None, debug=False):
                 continue
 
             total = model.get("current_interval_total_count", 0)
-            interval_usage = model.get("current_interval_usage_count", 0)
+            used = model.get("current_interval_usage_count", 0)
+            remaining = total - used
 
             if total == 0:
                 continue
 
-            if auth_method == "api_key":
-                used = interval_usage
-                remaining = total - used
-            else:
-                remaining = interval_usage
-                used = total - remaining
-
             weekly_total = model.get("current_weekly_total_count", 0)
-            weekly_interval_usage = model.get("current_weekly_usage_count", 0)
-            if auth_method == "api_key":
-                weekly_used = weekly_interval_usage
-                weekly_remaining = weekly_total - weekly_used
-            else:
-                weekly_remaining = weekly_interval_usage
-                weekly_used = weekly_total - weekly_remaining
+            weekly_used = model.get("current_weekly_usage_count", 0)
+            weekly_remaining = weekly_total - weekly_used
 
             interval_start, interval_end = get_current_interval(now)
             next_reset = get_next_reset_time(now)

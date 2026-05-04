@@ -69,7 +69,7 @@ class TestWeeklyLimit(unittest.TestCase):
                 "current_interval_total_count": 600,
                 "current_interval_usage_count": 600,
                 "current_weekly_total_count": 6000,
-                "current_weekly_usage_count": 0,
+                "current_weekly_usage_count": 6000,
                 "weekly_start_time": 1777219200000,
                 "weekly_end_time": 1777824000000,
             }]
@@ -86,7 +86,7 @@ class TestWeeklyLimit(unittest.TestCase):
                 "current_interval_total_count": 600,
                 "current_interval_usage_count": 0,
                 "current_weekly_total_count": 6000,
-                "current_weekly_usage_count": 6000,
+                "current_weekly_usage_count": 0,
                 "weekly_start_time": 1777219200000,
                 "weekly_end_time": 1777824000000,
             }]

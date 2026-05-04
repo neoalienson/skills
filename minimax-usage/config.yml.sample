@@ -1,5 +1,3 @@
-# api_key: your_api_key_here
-# OR cookies
-minimax_cookies: your_cookie_value_here
+api_key: your_api_key_here
 
 timezone: Asia/Shanghai
