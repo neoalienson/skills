@@ -182,10 +182,22 @@ def format_time_remaining(hours, minutes, seconds):
     else:
         return f"{seconds}s"
 
-def time_bar(elapsed_hours, total_hours, block="█", width=20, label="", emoji="⏱️"):
+def time_bar(elapsed_hours, total_hours, block="█", width=20, label="", emoji="⏱️", remaining_pct=None):
     """Draw bar for time elapsed. e.g. ███████░░░░░░░░░░░░░ Time: 36% (3h 10m) ⏱️"""
     if total_hours <= 0:
         return block * width + " (N/A)" + (f" {label}" if label else "")
+    if remaining_pct is not None:
+        filled = min(round((remaining_pct / 100) * width), width)
+        empty = width - filled
+        pct = remaining_pct
+        remaining_mins = int((total_hours * (100 - pct) / 100) * 60)
+        if remaining_mins >= 60:
+            remaining = f"{remaining_mins // 60}h {remaining_mins % 60}m"
+        else:
+            remaining = f"{remaining_mins}m"
+        label_str = f"{label} " if label else ""
+        emoji_str = f" {emoji}" if emoji else ""
+        return block * filled + "░" * empty + f" {label_str}{pct}% ({remaining}){emoji_str}"
     filled = round((elapsed_hours / total_hours) * width)
     empty = width - filled
     pct = int((elapsed_hours / total_hours) * 100)
@@ -233,19 +245,20 @@ def main(config_path=None, debug=False):
         print(f"📊 MiniMax Usage Report — {now.strftime('%Y-%m-%d %H:%M UTC+8')}\n")
 
         for model in data["model_remains"]:
-            if model["model_name"] != "MiniMax-M*":
+            model_name = model["model_name"]
+            if model_name not in ("MiniMax-M*", "general"):
                 continue
 
             total = model.get("current_interval_total_count", 0)
             used = model.get("current_interval_usage_count", 0)
             remaining = total - used
 
-            if total == 0:
-                continue
+            remains_time = model.get("remains_time", 0)
+            remaining_pct = model.get("current_interval_remaining_percent", 0)
+            weekly_remaining_pct = model.get("current_weekly_remaining_percent", 0)
 
             weekly_total = model.get("current_weekly_total_count", 0)
             weekly_used = model.get("current_weekly_usage_count", 0)
-            weekly_remaining = weekly_total - weekly_used
 
             interval_start, interval_end = get_current_interval(now)
             next_reset = get_next_reset_time(now)
@@ -258,12 +271,33 @@ def main(config_path=None, debug=False):
 
             hours_elapsed = total_interval_hours - (hours + minutes / 60 + seconds / 3600)
 
-            usage_pct = (used / total) * 100 if total > 0 else 0
-            remaining_pct = (remaining / total) * 100 if total > 0 else 0
+            display_name = "MiniMax-M*" if model_name == "MiniMax-M*" else model_name
+            print(f"**{display_name}**")
 
-            print(f"**{model['model_name']}**")
-            print(f"  {ascii_bar(used, total, label='Usage:')}")
-            print(f"  {time_bar(hours_elapsed, total_interval_hours, label='Time:')}")
+            if total > 0:
+                usage_pct = (used / total) * 100 if total > 0 else 0
+                remaining_pct = (remaining / total) * 100 if total > 0 else 0
+                print(f"  {ascii_bar(used, total, label='Usage:')}")
+                print(f"  {time_bar(hours_elapsed, total_interval_hours, label='Time:')}")
+            else:
+                used_pct = max(0, 100 - remaining_pct)
+                usage_filled = min(round((used_pct / 100) * 20), 20)
+                usage_empty = 20 - usage_filled
+                print(f"  {'█' * usage_filled}{'░' * usage_empty} Usage: {used_pct}%")
+                elapsed_pct = max(0, 100 - remaining_pct)
+                elapsed_filled = min(round((elapsed_pct / 100) * 20), 20)
+                elapsed_empty = 20 - elapsed_filled
+                total_secs = hours * 3600 + minutes * 60 + seconds
+                if total_secs >= 86400:
+                    d = total_secs // 86400
+                    h = (total_secs % 86400) // 3600
+                    m = (total_secs % 3600) // 60
+                    remaining_str = f"{d}d {h}h {m}m"
+                elif total_secs >= 3600:
+                    remaining_str = f"{hours}h {minutes}m"
+                else:
+                    remaining_str = f"{minutes}m {seconds}s"
+                print(f"  {'█' * elapsed_filled}{'░' * elapsed_empty} Time: {elapsed_pct}% ({remaining_str}) ⏱️")
             print(f"  Next reset: {next_reset.strftime('%H:%M UTC+8')}")
 
             if weekly_total > 0:
@@ -276,8 +310,30 @@ def main(config_path=None, debug=False):
                 print(f"  {ascii_bar(weekly_used, weekly_total, label='Usage:')}")
                 print(f"  {time_bar(weekly_elapsed, weekly_total_hours, label='Time:')}")
                 print(f"  Week quota Next reset: {weekly_end.strftime('%d %H:%M UTC+8')}")
+            elif weekly_remaining_pct > 0:
+                print()
+                weekly_used_pct = max(0, 100 - weekly_remaining_pct)
+                weekly_usage_filled = min(round((weekly_used_pct / 100) * 20), 20)
+                weekly_usage_empty = 20 - weekly_usage_filled
+                print(f"  {'█' * weekly_usage_filled}{'░' * weekly_usage_empty} Usage: {weekly_used_pct}%")
+                weekly_elapsed_pct = max(0, 100 - weekly_remaining_pct)
+                weekly_elapsed_filled = min(round((weekly_elapsed_pct / 100) * 20), 20)
+                weekly_elapsed_empty = 20 - weekly_elapsed_filled
+                weekly_end = datetime.fromtimestamp(model["weekly_end_time"] / 1000, tz=timezone.utc).astimezone(get_timezone(config_path))
+                weekly_secs = (weekly_end - now).total_seconds()
+                if weekly_secs >= 86400:
+                    d = int(weekly_secs // 86400)
+                    h = int((weekly_secs % 86400) // 3600)
+                    m = int((weekly_secs % 3600) // 60)
+                    weekly_remaining_str = f"{d}d {h}h {m}m"
+                elif weekly_secs >= 3600:
+                    weekly_remaining_str = f"{int(weekly_secs // 3600)}h {int((weekly_secs % 3600) // 60)}m"
+                else:
+                    weekly_remaining_str = f"{int(weekly_secs // 60)}m"
+                print(f"  {'█' * weekly_elapsed_filled}{'░' * weekly_elapsed_empty} Time: {weekly_elapsed_pct}% ({weekly_remaining_str}) ⏱️")
+                print(f"  Week quota Next reset: {weekly_end.strftime('%d %H:%M UTC+8')}")
 
-            if remaining_pct < 10:
+            if remaining_pct < 10 and total > 0:
                 print(f"  ⚠️  Warning: Usage nearly exhausted ({remaining_pct:.0f}%)")
             print()
     except Exception as e:

@@ -111,21 +111,128 @@ class TestWeeklyLimit(unittest.TestCase):
         output = self._run_main_with_data(mock_data)
         self.assertNotIn("Other-Model", output)
 
-    def test_weekly_end_time_format(self):
+    def test_count_based_format_exact_output(self):
         mock_data = {
             "base_resp": {"status_code": 0},
             "model_remains": [{
                 "model_name": "MiniMax-M*",
                 "current_interval_total_count": 600,
-                "current_interval_usage_count": 0,
+                "current_interval_usage_count": 200,
                 "current_weekly_total_count": 6000,
-                "current_weekly_usage_count": 0,
+                "current_weekly_usage_count": 5905,
                 "weekly_start_time": 1777219200000,
                 "weekly_end_time": 1777824000000,
             }]
         }
         output = self._run_main_with_data(mock_data)
-        self.assertIn("UTC+8", output)
+        self.assertIn("**MiniMax-M***", output)
+        self.assertIn("Usage: 33% (200/600)", output)
+        self.assertIn("Time:", output)
+        self.assertIn("Next reset:", output)
+        self.assertIn("Usage: 98% (5905/6000)", output)
+        self.assertIn("Week quota Next reset:", output)
+
+    def test_time_based_no_counts_format(self):
+        mock_data = {
+            "base_resp": {"status_code": 0},
+            "model_remains": [{
+                "model_name": "general",
+                "remains_time": 3600000,
+                "current_interval_total_count": 0,
+                "current_interval_usage_count": 0,
+                "current_interval_remaining_percent": 50,
+                "current_weekly_total_count": 0,
+                "current_weekly_usage_count": 0,
+                "weekly_start_time": 1777219200000,
+                "weekly_end_time": 1777824000000,
+                "current_weekly_remaining_percent": 75,
+            }]
+        }
+        output = self._run_main_with_data(mock_data)
+        self.assertIn("**general**", output)
+        self.assertIn("Time:", output)
+        self.assertIn("Next reset:", output)
+        self.assertIn("Week quota Next reset:", output)
+
+    def test_time_based_shows_percentage_not_counts(self):
+        mock_data = {
+            "base_resp": {"status_code": 0},
+            "model_remains": [{
+                "model_name": "general",
+                "remains_time": 0,
+                "current_interval_total_count": 0,
+                "current_interval_usage_count": 0,
+                "current_interval_remaining_percent": 50,
+                "current_weekly_total_count": 0,
+                "current_weekly_usage_count": 0,
+                "weekly_start_time": 1777219200000,
+                "weekly_end_time": 1777824000000,
+                "current_weekly_remaining_percent": 75,
+            }]
+        }
+        output = self._run_main_with_data(mock_data)
+        self.assertNotIn("(200/600)", output)
+        self.assertNotIn("(5905/6000)", output)
+        self.assertIn("Usage: 50%", output)
+        self.assertIn("Usage: 25%", output)
+
+    def test_time_based_response_video_model_skipped(self):
+        mock_data = {
+            "base_resp": {"status_code": 0},
+            "model_remains": [{
+                "model_name": "video",
+                "remains_time": 7200000,
+                "current_interval_total_count": 0,
+                "current_interval_usage_count": 0,
+                "current_interval_remaining_percent": 100,
+                "current_weekly_total_count": 0,
+                "current_weekly_usage_count": 0,
+                "weekly_start_time": 1777219200000,
+                "weekly_end_time": 1777824000000,
+                "current_weekly_remaining_percent": 100,
+            }]
+        }
+        output = self._run_main_with_data(mock_data)
+        self.assertNotIn("video", output)
+
+    def test_time_based_response_100_percent(self):
+        mock_data = {
+            "base_resp": {"status_code": 0},
+            "model_remains": [{
+                "model_name": "general",
+                "remains_time": 7200000,
+                "current_interval_total_count": 0,
+                "current_interval_usage_count": 0,
+                "current_interval_remaining_percent": 100,
+                "current_weekly_total_count": 0,
+                "current_weekly_usage_count": 0,
+                "weekly_start_time": 1777219200000,
+                "weekly_end_time": 1777824000000,
+                "current_weekly_remaining_percent": 100,
+            }]
+        }
+        output = self._run_main_with_data(mock_data)
+        self.assertIn("Usage: 0%", output)
+
+    def test_time_based_response_total_zero(self):
+        mock_data = {
+            "base_resp": {"status_code": 0},
+            "model_remains": [{
+                "model_name": "general",
+                "remains_time": 0,
+                "current_interval_total_count": 0,
+                "current_interval_usage_count": 0,
+                "current_interval_remaining_percent": 50,
+                "current_weekly_total_count": 0,
+                "current_weekly_usage_count": 0,
+                "weekly_start_time": 1777219200000,
+                "weekly_end_time": 1777824000000,
+                "current_weekly_remaining_percent": 75,
+            }]
+        }
+        output = self._run_main_with_data(mock_data)
+        self.assertIn("Usage: 50%", output)
+        self.assertIn("Usage: 25%", output)
 
 
 class TestAsciiBar(unittest.TestCase):
