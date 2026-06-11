@@ -161,6 +161,12 @@ def fetch_usage(config_path=None, debug=False):
     try:
         with no_redirect_opener.open(req, timeout=30) as response:
             result = response.read().decode("utf-8")
+            if debug:
+                try:
+                    beautified = json.dumps(json.loads(result), indent=4)
+                    print(f"[DEBUG] Raw API Response:\n{beautified}")
+                except Exception:
+                    print(f"[DEBUG] Raw API Response (unparsed):\n{result}")
     except urllib.error.HTTPError as e:
         raise HTTPError(f"HTTP error {e.code}. API key may be invalid.")
     except urllib.error.URLError as e:
